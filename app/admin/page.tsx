@@ -154,8 +154,8 @@ export default function AdminPage() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 500000) { // 500KB limit
-        setMessage({ type: 'error', text: 'Image too large. Max 500KB.' });
+      if (file.size > 1000000) { // 1MB limit
+        setMessage({ type: 'error', text: 'Image too large. Max 1MB.' });
         return;
       }
       const reader = new FileReader();
@@ -619,7 +619,7 @@ export default function AdminPage() {
                 Add photos and CricHeroes links for each player. You can:
               </p>
               <ul className="text-sm text-white/50 space-y-1 ml-4 list-disc">
-                <li>Upload a photo (max 500KB) or paste an image URL</li>
+                <li>Upload a photo (max 1MB) or paste an image URL</li>
                 <li>Add a CricHeroes profile link</li>
                 <li>Paste a screenshot URL from CricHeroes</li>
               </ul>
