@@ -2,10 +2,25 @@
 
 A real-time auction display board for cricket player auctions. Viewers on mobile/desktop see live updates as players are auctioned to teams.
 
+## Live URLs
+
+- **Public Auction**: https://lrcc-super11-auction.vercel.app
+- **Admin Panel**: https://lrcc-super11-auction.vercel.app/admin (PIN: 2237)
+- **All Players**: https://lrcc-super11-auction.vercel.app/players
+- **GitHub**: https://github.com/aapka4u/lrcc-super11-auction
+
 ## Features
 
 - **Public Display** (`/`): Shows live auction status, team rosters building up
-- **Admin Console** (`/admin`): PIN-protected control panel
+- **Admin Console** (`/admin`): PIN-protected control panel with two tabs:
+  - **Auction Control**: Start bidding, mark players sold, assign to teams
+  - **Player Profiles**: Upload player images, add CricHeroes profile links
+- **Players Page** (`/players`): Browse all 48 players with filtering and search
+- **Player Roles**: Visual role indicators with icons:
+  - 🏏 Batsman
+  - 🎯 Bowler
+  - ⚡ All-rounder
+  - 🧤 WK-Batsman
 - **Auto-refresh**: Updates every 2 seconds
 - **Mobile-friendly**: Works on all devices
 - **No prices shown**: Only player names and team assignments visible publicly
@@ -69,9 +84,11 @@ git push -u origin main
 
 All player and team data is pre-configured:
 
-- **6 Teams** with Captain & Vice-Captain
+- **6 Teams** with Captain & Vice-Captain (12 team leaders)
 - **36 Players** in auction pool (6 A+ / 30 Base)
+- **48 Total Players** (12 team leaders + 36 auction pool)
 - **A+ Players**: Bir, Puneet, Tushar, Akash, Ajinkya, Sayed Saadat
+- **Clubs**: LRCC (30 players) and Super11 (18 players)
 
 ## Teams
 
@@ -101,9 +118,38 @@ All player and team data is pre-configured:
 ## Tech Stack
 
 - Next.js 14 (App Router)
-- Vercel KV (Redis storage)
-- Tailwind CSS
+- Vercel KV via Upstash Redis (persistent storage)
+- Tailwind CSS (glass morphism dark theme)
 - TypeScript
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/state` | GET | Get current auction state |
+| `/api/auction` | POST | Update auction state (admin) |
+| `/api/players` | GET | Get all players with profiles |
+| `/api/players` | POST | Update player profile (admin) |
+| `/api/players` | DELETE | Remove player profile data (admin) |
+
+## Project Structure
+
+```
+app/
+├── page.tsx           # Public auction display
+├── admin/page.tsx     # Admin control panel
+├── players/page.tsx   # All players list
+├── api/
+│   ├── state/route.ts    # Auction state API
+│   ├── auction/route.ts  # Auction control API
+│   └── players/route.ts  # Player profiles API
+components/
+├── AuctionStatus.tsx  # Live auction status display
+└── TeamCard.tsx       # Team roster card
+lib/
+├── data.ts            # Player & team data
+└── types.ts           # TypeScript interfaces
+```
 
 ## Local Development
 
