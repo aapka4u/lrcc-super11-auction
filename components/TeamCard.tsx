@@ -23,16 +23,16 @@ function PlayerBadge({ player }: { player: Player }) {
         <img
           src={player.image}
           alt={player.name}
-          className="w-6 h-6 rounded-full object-cover"
+          className="w-8 h-8 rounded-md object-cover"
         />
       ) : (
         <div
-          className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold"
+          className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-semibold"
         >
           {getInitials(player.name)}
         </div>
       )}
-      <span className="text-sm text-white/90 truncate">{player.name}</span>
+      <span className="text-sm text-white/90 truncate font-medium">{player.name}</span>
       {player.category === 'APLUS' && (
         <span className="text-[10px] bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded font-medium">
           A+
@@ -84,14 +84,14 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
             <img
               src={team.captainPlayer.image}
               alt={team.captain}
-              className="w-6 h-6 rounded-full object-cover"
+              className="w-8 h-8 rounded-md object-cover"
             />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold">
+            <div className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-semibold">
               {getInitials(team.captain)}
             </div>
           )}
-          <span className="text-white/90">{team.captain}</span>
+          <span className="text-white/90 font-medium">{team.captain}</span>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="text-amber-400/70 font-medium w-6">VC</span>
@@ -99,14 +99,14 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
             <img
               src={team.viceCaptainPlayer.image}
               alt={team.viceCaptain}
-              className="w-6 h-6 rounded-full object-cover"
+              className="w-8 h-8 rounded-md object-cover"
             />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold">
+            <div className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-semibold">
               {getInitials(team.viceCaptain)}
             </div>
           )}
-          <span className="text-white/90">{team.viceCaptain}</span>
+          <span className="text-white/90 font-medium">{team.viceCaptain}</span>
         </div>
       </div>
 

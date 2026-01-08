@@ -27,7 +27,7 @@ export interface PlayerProfile {
   updatedAt: number;
 }
 
-export type AuctionStatus = 'IDLE' | 'LIVE' | 'SOLD';
+export type AuctionStatus = 'IDLE' | 'LIVE' | 'SOLD' | 'PAUSED';
 
 export interface AuctionState {
   status: AuctionStatus;
@@ -36,6 +36,8 @@ export interface AuctionState {
   rosters: Record<string, string[]>; // teamId -> playerIds
   soldPlayers: string[]; // playerIds that have been sold
   lastUpdate: number;
+  pauseMessage?: string; // Custom message when paused
+  pauseUntil?: number; // Timestamp when auction resumes
 }
 
 export interface PublicState {

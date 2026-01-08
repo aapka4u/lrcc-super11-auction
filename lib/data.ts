@@ -126,8 +126,6 @@ export const PLAYERS: Player[] = [
 // All players combined (for the players page)
 export const ALL_PLAYERS: Player[] = [...TEAM_LEADERS, ...PLAYERS];
 
-export const ADMIN_PIN = '2237';
-
 export const getInitialState = () => ({
   status: 'IDLE' as const,
   currentPlayerId: null,
@@ -135,6 +133,8 @@ export const getInitialState = () => ({
   rosters: Object.fromEntries(TEAMS.map(t => [t.id, []])),
   soldPlayers: [],
   lastUpdate: Date.now(),
+  pauseMessage: undefined,
+  pauseUntil: undefined,
 });
 
 export const getPlayerById = (id: string): Player | undefined => 

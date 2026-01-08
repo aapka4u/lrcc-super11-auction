@@ -1,9 +1,10 @@
 import { kv } from '@vercel/kv';
 import { NextRequest, NextResponse } from 'next/server';
 import { PlayerProfile } from '@/lib/types';
-import { ADMIN_PIN, ALL_PLAYERS } from '@/lib/data';
+import { ALL_PLAYERS } from '@/lib/data';
 
 const PROFILES_KEY = 'player:profiles';
+const ADMIN_PIN = process.env.ADMIN_PIN;
 
 // GET: Fetch all player profiles
 export async function GET() {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     const { pin, playerId, image, cricHeroesUrl } = body;
 
     // Verify admin PIN
-    if (pin !== ADMIN_PIN) {
+    if (!ADMIN_PIN || pin !== ADMIN_PIN) {
       return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
     }
 
@@ -75,7 +76,7 @@ export async function DELETE(request: NextRequest) {
     const { pin, playerId, field } = body; // field can be 'image' or 'cricHeroesUrl' or 'all'
 
     // Verify admin PIN
-    if (pin !== ADMIN_PIN) {
+    if (!ADMIN_PIN || pin !== ADMIN_PIN) {
       return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
     }
 

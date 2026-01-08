@@ -1,10 +1,11 @@
 import { kv } from '@vercel/kv';
 import { NextRequest, NextResponse } from 'next/server';
 import { AuctionState, Player, PlayerProfile } from '@/lib/types';
-import { getInitialState, ADMIN_PIN, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById } from '@/lib/data';
+import { getInitialState, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById } from '@/lib/data';
 
 const STATE_KEY = 'auction:state';
 const PROFILES_KEY = 'player:profiles';
+const ADMIN_PIN = process.env.ADMIN_PIN;
 
 // Helper to find player from both auction pool and team leaders
 const findPlayer = (id: string): Player | undefined =>
@@ -67,6 +68,8 @@ export async function GET() {
       lastUpdate: auctionState.lastUpdate,
       soldCount: auctionState.soldPlayers.length,
       totalPlayers: PLAYERS.length,
+      pauseMessage: auctionState.pauseMessage,
+      pauseUntil: auctionState.pauseUntil,
     });
   } catch (error) {
     console.error('Error fetching state:', error);
@@ -78,10 +81,10 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { pin, action, playerId, teamId } = body;
+    const { pin, action, playerId, teamId, confirmReset, pauseMessage, pauseMinutes } = body;
 
     // Verify admin PIN
-    if (pin !== ADMIN_PIN) {
+    if (!ADMIN_PIN || pin !== ADMIN_PIN) {
       return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
     }
 
@@ -91,6 +94,10 @@ export async function POST(request: NextRequest) {
     }
 
     switch (action) {
+      case 'VERIFY':
+        // Just checking PIN
+        return NextResponse.json({ success: true });
+
       case 'START_AUCTION':
         // Set player as currently being auctioned
         if (!playerId) {
@@ -105,6 +112,12 @@ export async function POST(request: NextRequest) {
         // Mark player as sold to a team
         if (!teamId || !state.currentPlayerId) {
           return NextResponse.json({ error: 'Team ID required' }, { status: 400 });
+        }
+        // CRITICAL: Check if already sold
+        if (state.soldPlayers.includes(state.currentPlayerId)) {
+          return NextResponse.json({ 
+            error: 'This player was already sold. Please select a different player.' 
+          }, { status: 400 });
         }
         state.status = 'SOLD';
         state.soldToTeamId = teamId;
@@ -129,8 +142,31 @@ export async function POST(request: NextRequest) {
         state.soldToTeamId = null;
         break;
 
+      case 'PAUSE':
+        // Pause the auction with optional message and duration
+        state.status = 'PAUSED';
+        state.pauseMessage = pauseMessage || 'Auction is paused. We will be back shortly.';
+        state.pauseUntil = pauseMinutes 
+          ? Date.now() + (pauseMinutes * 60 * 1000)
+          : undefined;
+        break;
+
+      case 'UNPAUSE':
+        // Resume the auction
+        if (state.status === 'PAUSED') {
+          state.status = state.currentPlayerId ? 'LIVE' : 'IDLE';
+          state.pauseMessage = undefined;
+          state.pauseUntil = undefined;
+        }
+        break;
+
       case 'RESET':
         // Full reset
+        if (!confirmReset) {
+          return NextResponse.json({ 
+            error: 'Reset requires confirmation. Send confirmReset: true' 
+          }, { status: 400 });
+        }
         state = getInitialState();
         break;
 

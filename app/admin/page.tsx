@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { TEAMS, PLAYERS, ADMIN_PIN, ALL_PLAYERS } from '@/lib/data';
+import { TEAMS, PLAYERS, ALL_PLAYERS } from '@/lib/data';
 import { Team, Player, AuctionStatus, PlayerProfile } from '@/lib/types';
 
 function getRoleIcon(role?: string): string {
@@ -45,6 +45,8 @@ export default function AdminPage() {
   const [imageUrl, setImageUrl] = useState('');
   const [cricHeroesUrl, setCricHeroesUrl] = useState('');
   const [profileSearch, setProfileSearch] = useState('');
+  const [pauseMessage, setPauseMessage] = useState('');
+  const [pauseMinutes, setPauseMinutes] = useState<number | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchState = useCallback(async () => {
@@ -75,23 +77,45 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchState();
       fetchProfiles();
+      // Keep admin polling at 2 seconds for responsiveness
       const interval = setInterval(fetchState, 2000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, fetchState, fetchProfiles]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Clear pause form when unpaused
+  useEffect(() => {
+    if (state?.status !== 'PAUSED') {
+      setPauseMessage('');
+      setPauseMinutes(undefined);
+    }
+  }, [state?.status]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === ADMIN_PIN) {
-      setIsAuthenticated(true);
-      setPinError(false);
-    } else {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, action: 'VERIFY' }),
+      });
+      
+      if (res.ok) {
+        setIsAuthenticated(true);
+        setPinError(false);
+      } else {
+        setPinError(true);
+        setPin('');
+      }
+    } catch (err) {
       setPinError(true);
-      setPin('');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const performAction = async (action: string, data: Record<string, string> = {}) => {
+  const performAction = async (action: string, data: Record<string, string | boolean | number | undefined> = {}) => {
     setLoading(true);
     setMessage(null);
     
@@ -99,7 +123,7 @@ export default function AdminPage() {
       const res = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: ADMIN_PIN, action, ...data }),
+        body: JSON.stringify({ pin, action, ...data }),
       });
       
       const result = await res.json();
@@ -150,7 +174,7 @@ export default function AdminPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pin: ADMIN_PIN,
+          pin,
           playerId,
           image: imageUrl || undefined,
           cricHeroesUrl: cricHeroesUrl || undefined,
@@ -183,7 +207,7 @@ export default function AdminPage() {
       const res = await fetch('/api/players', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: ADMIN_PIN, playerId, field: 'image' }),
+        body: JSON.stringify({ pin, playerId, field: 'image' }),
       });
       if (res.ok) {
         setMessage({ type: 'success', text: 'Image removed!' });
@@ -335,6 +359,7 @@ export default function AdminPage() {
               ${state.status === 'IDLE' ? 'bg-gray-500/30 text-gray-300' : ''}
               ${state.status === 'LIVE' ? 'bg-red-500/30 text-red-300' : ''}
               ${state.status === 'SOLD' ? 'bg-green-500/30 text-green-300' : ''}
+              ${state.status === 'PAUSED' ? 'bg-amber-500/30 text-amber-300' : ''}
             `}>
               {state.status}
             </div>
@@ -353,6 +378,83 @@ export default function AdminPage() {
               <span className="text-green-400">→ {state.soldToTeam.name}</span>
             )}
           </div>
+        </section>
+
+        {/* Pause/Resume Control */}
+        <section className="glass rounded-2xl p-4 border border-amber-500/30">
+          <h2 className="text-sm font-semibold text-amber-400 uppercase tracking-wider mb-3">
+            ⏸️ Pause Control
+          </h2>
+          {state.status === 'PAUSED' ? (
+            <div className="space-y-3">
+              <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 mb-3">
+                <p className="text-sm text-amber-200 font-semibold mb-1">Auction is PAUSED</p>
+                <p className="text-xs text-amber-300/80">Viewers see a pause message</p>
+              </div>
+              <button
+                onClick={() => performAction('UNPAUSE')}
+                disabled={loading}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-semibold py-3 rounded-xl transition-colors"
+              >
+                ▶️ Resume Auction
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Pause message (e.g., 'Back in 10 minutes')"
+                value={pauseMessage}
+                onChange={(e) => setPauseMessage(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="Minutes"
+                  value={pauseMinutes}
+                  onChange={(e) => setPauseMinutes(e.target.value ? parseInt(e.target.value) : undefined)}
+                  min="1"
+                  max="120"
+                  className="w-24 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                />
+                <button
+                  onClick={() => performAction('PAUSE', { pauseMessage, pauseMinutes })}
+                  disabled={loading}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-600 text-white font-semibold py-2 rounded-xl transition-colors"
+                >
+                  ⏸️ Pause Auction
+                </button>
+              </div>
+              <p className="text-xs text-white/40">
+                Leave message blank for default. Set minutes for countdown.
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* Soundboard */}
+        <section className="glass rounded-2xl p-4">
+           <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
+             🔊 Soundboard
+           </h2>
+           <div className="flex gap-3">
+             <button 
+               onClick={() => new Audio('https://assets.mixkit.co/sfx/preview/mixkit-judge-gavel-hit-530.mp3').play()}
+               className="flex-1 bg-amber-600/20 hover:bg-amber-600/40 text-amber-500 border border-amber-600/30 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+             >
+               🔨 Sold Hammer
+             </button>
+             <button 
+               onClick={() => new Audio('https://assets.mixkit.co/sfx/preview/mixkit-happy-bells-notification-937.mp3').play()}
+               className="flex-1 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/30 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+             >
+               🔔 New Player
+             </button>
+           </div>
+           <p className="text-xs text-center mt-2 text-white/30">
+             (Uses external audio files - ensure internet access)
+           </p>
         </section>
 
         {/* Action: Select Player */}
@@ -491,8 +593,9 @@ export default function AdminPage() {
           </h2>
           <button
             onClick={() => {
-              if (confirm('Are you sure you want to RESET the entire auction? This cannot be undone!')) {
-                performAction('RESET');
+              const confirmText = prompt("Type 'RESET' to confirm wiping all data:");
+              if (confirmText === 'RESET') {
+                performAction('RESET', { confirmReset: true });
               }
             }}
             disabled={loading}

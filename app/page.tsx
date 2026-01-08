@@ -6,6 +6,35 @@ import TeamCard from '@/components/TeamCard';
 import AuctionStatus from '@/components/AuctionStatus';
 import { Team, Player, AuctionStatus as Status } from '@/lib/types';
 
+function PauseCountdown({ pauseUntil }: { pauseUntil: number }) {
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = Date.now();
+      const diff = pauseUntil - now;
+      setTimeLeft(Math.max(0, Math.floor(diff / 1000)));
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [pauseUntil]);
+
+  if (timeLeft <= 0) {
+    return <p className="text-sm text-amber-200">Resuming soon...</p>;
+  }
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+
+  return (
+    <p className="text-xl md:text-2xl font-bold text-white">
+      Back in <span className="text-amber-300">{minutes}:{seconds.toString().padStart(2, '0')}</span>
+    </p>
+  );
+}
+
 interface PublicState {
   status: Status;
   currentPlayer: Player | null;
@@ -14,6 +43,8 @@ interface PublicState {
   lastUpdate: number;
   soldCount: number;
   totalPlayers: number;
+  pauseMessage?: string;
+  pauseUntil?: number;
 }
 
 export default function Home() {
@@ -38,8 +69,8 @@ export default function Home() {
   useEffect(() => {
     fetchState();
     
-    // Poll every 2 seconds
-    const interval = setInterval(fetchState, 2000);
+    // Poll every 3 seconds for public pages (reduced load)
+    const interval = setInterval(fetchState, 3000);
     
     return () => clearInterval(interval);
   }, [fetchState]);
@@ -87,10 +118,31 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Error Banner */}
+      {/* Error Banner - Prominent and Sticky */}
       {error && (
-        <div className="bg-red-500/20 border-b border-red-500/30 px-4 py-2 text-center">
-          <p className="text-sm text-red-300">{error}</p>
+        <div className="sticky top-0 z-50 bg-red-600/90 backdrop-blur-md border-b-2 border-red-500 px-4 py-3 text-center shadow-lg">
+          <p className="text-base font-semibold text-red-100 flex items-center justify-center gap-2">
+            <span className="text-xl">⚠️</span>
+            {error}
+          </p>
+        </div>
+      )}
+
+      {/* Pause Banner - Very Prominent */}
+      {state.status === 'PAUSED' && (
+        <div className="sticky top-0 z-50 bg-amber-600/95 backdrop-blur-md border-b-4 border-amber-400 px-4 py-6 text-center shadow-xl">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-4xl mb-3 animate-pulse">⏸️</div>
+            <h2 className="text-2xl md:text-3xl font-black text-white mb-2 uppercase tracking-wider">
+              Auction Paused
+            </h2>
+            <p className="text-lg md:text-xl text-amber-100 font-semibold mb-3">
+              {state.pauseMessage || 'We will be back shortly.'}
+            </p>
+            {state.pauseUntil && (
+              <PauseCountdown pauseUntil={state.pauseUntil} />
+            )}
+          </div>
         </div>
       )}
 
@@ -128,7 +180,7 @@ export default function Home() {
       {/* Footer with connection status */}
       <footer className="fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm border-t border-white/10 px-4 py-2">
         <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-white/40">
-          <span>Auto-refreshing every 2s</span>
+          <span>Auto-refreshing every 3s</span>
           <span>Last update: {lastRefresh.toLocaleTimeString()}</span>
         </div>
       </footer>
