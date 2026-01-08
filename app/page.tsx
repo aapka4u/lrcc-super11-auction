@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import TeamCard from '@/components/TeamCard';
 import AuctionStatus from '@/components/AuctionStatus';
 import { Team, Player, AuctionStatus as Status } from '@/lib/types';
@@ -68,11 +69,19 @@ export default function Home() {
                 Live Auction • Parkwijk Utrecht
               </p>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-semibold text-white/80">
-                {state.soldCount} / {state.totalPlayers}
+            <div className="flex items-center gap-4">
+              <Link
+                href="/players"
+                className="text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
+              >
+                👥 All Players
+              </Link>
+              <div className="text-right">
+                <div className="text-sm font-semibold text-white/80">
+                  {state.soldCount} / {state.totalPlayers}
+                </div>
+                <div className="text-xs text-white/40">players sold</div>
               </div>
-              <div className="text-xs text-white/40">players sold</div>
             </div>
           </div>
         </div>

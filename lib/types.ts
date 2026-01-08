@@ -10,10 +10,21 @@ export interface Team {
 export interface Player {
   id: string;
   name: string;
-  category: 'APLUS' | 'BASE';
+  category: 'APLUS' | 'BASE' | 'CAPTAIN' | 'VICE_CAPTAIN';
   club: 'LRCC' | 'Super11';
   availability: 'full' | 'till_11' | 'till_12' | 'tentative';
   role?: 'Batsman' | 'Bowler' | 'All-rounder' | 'WK-Batsman';
+  image?: string; // URL to player image (uploaded or external)
+  teamId?: string; // for captains/VCs - which team they belong to
+  cricHeroesUrl?: string; // link to CricHeroes profile
+}
+
+// Player profile data stored in KV (images, cricHeroes links)
+export interface PlayerProfile {
+  playerId: string;
+  image?: string; // base64 or URL
+  cricHeroesUrl?: string;
+  updatedAt: number;
 }
 
 export type AuctionStatus = 'IDLE' | 'LIVE' | 'SOLD';

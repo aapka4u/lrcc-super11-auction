@@ -51,6 +51,34 @@ export const TEAMS: Team[] = [
   },
 ];
 
+// Captains and Vice-Captains (not in auction pool)
+export const TEAM_LEADERS: Player[] = [
+  // Team Sree & Naveen
+  { id: 'sree', name: 'Sree', category: 'CAPTAIN', club: 'LRCC', availability: 'full', role: 'All-rounder', teamId: 'team_sree_naveen' },
+  { id: 'naveen', name: 'Naveen', category: 'VICE_CAPTAIN', club: 'Super11', availability: 'full', role: 'All-rounder', teamId: 'team_sree_naveen' },
+
+  // Team Sathish & Mehul
+  { id: 'sathish', name: 'Sathish', category: 'CAPTAIN', club: 'Super11', availability: 'full', role: 'All-rounder', teamId: 'team_sathish_mehul' },
+  { id: 'mehul_lalith', name: 'Mehul Lalith', category: 'VICE_CAPTAIN', club: 'LRCC', availability: 'full', role: 'All-rounder', teamId: 'team_sathish_mehul' },
+
+  // Team Rohit & Praveen
+  { id: 'rohit', name: 'Rohit', category: 'CAPTAIN', club: 'LRCC', availability: 'full', role: 'All-rounder', teamId: 'team_rohit_praveen' },
+  { id: 'praveen', name: 'Praveen', category: 'VICE_CAPTAIN', club: 'Super11', availability: 'full', role: 'Bowler', teamId: 'team_rohit_praveen' },
+
+  // Team Rajul & Kathir
+  { id: 'rajul', name: 'Rajul', category: 'CAPTAIN', club: 'LRCC', availability: 'full', role: 'All-rounder', teamId: 'team_rajul_kathir' },
+  { id: 'kathir', name: 'Kathir', category: 'VICE_CAPTAIN', club: 'Super11', availability: 'full', role: 'All-rounder', teamId: 'team_rajul_kathir' },
+
+  // Team Vaibhav & Sasi
+  { id: 'vaibhav', name: 'Vaibhav', category: 'CAPTAIN', club: 'LRCC', availability: 'full', role: 'All-rounder', teamId: 'team_vaibhav_sasi' },
+  { id: 'sasi', name: 'Sasi', category: 'VICE_CAPTAIN', club: 'Super11', availability: 'full', role: 'All-rounder', teamId: 'team_vaibhav_sasi' },
+
+  // Team Murali & Paddy
+  { id: 'murali', name: 'Murali', category: 'CAPTAIN', club: 'Super11', availability: 'full', role: 'All-rounder', teamId: 'team_murali_paddy' },
+  { id: 'kp_paddy', name: 'KP Paddy', category: 'VICE_CAPTAIN', club: 'LRCC', availability: 'full', role: 'WK-Batsman', teamId: 'team_murali_paddy' },
+];
+
+// Auction pool players
 export const PLAYERS: Player[] = [
   // A+ Category (6 players)
   { id: 'bir', name: 'Bir', category: 'APLUS', club: 'LRCC', availability: 'full', role: 'All-rounder' },
@@ -94,6 +122,9 @@ export const PLAYERS: Player[] = [
   { id: 'bhuvanesh', name: 'Bhuvanesh', category: 'BASE', club: 'Super11', availability: 'full', role: 'Bowler' },
   { id: 'karthik', name: 'Karthik', category: 'BASE', club: 'Super11', availability: 'full', role: 'Batsman' },
 ];
+
+// All players combined (for the players page)
+export const ALL_PLAYERS: Player[] = [...TEAM_LEADERS, ...PLAYERS];
 
 export const ADMIN_PIN = '2237';
 

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { TEAMS, PLAYERS, ADMIN_PIN } from '@/lib/data';
-import { Team, Player, AuctionStatus } from '@/lib/types';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
+import { TEAMS, PLAYERS, ADMIN_PIN, ALL_PLAYERS } from '@/lib/data';
+import { Team, Player, AuctionStatus, PlayerProfile } from '@/lib/types';
 
 function getRoleIcon(role?: string): string {
   switch (role) {
@@ -12,6 +13,10 @@ function getRoleIcon(role?: string): string {
     case 'WK-Batsman': return '🧤';
     default: return '';
   }
+}
+
+function getInitials(name: string): string {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 interface AdminState {
@@ -27,11 +32,20 @@ export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
-  
+
   const [state, setState] = useState<AdminState | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Player profiles state
+  const [activeTab, setActiveTab] = useState<'auction' | 'profiles'>('auction');
+  const [profiles, setProfiles] = useState<Record<string, PlayerProfile>>({});
+  const [editingPlayer, setEditingPlayer] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState('');
+  const [cricHeroesUrl, setCricHeroesUrl] = useState('');
+  const [profileSearch, setProfileSearch] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchState = useCallback(async () => {
     try {
@@ -45,13 +59,26 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchProfiles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/players', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setProfiles(data.profiles || {});
+      }
+    } catch (err) {
+      console.error('Error fetching profiles:', err);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchState();
+      fetchProfiles();
       const interval = setInterval(fetchState, 2000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, fetchState]);
+  }, [isAuthenticated, fetchState, fetchProfiles]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +125,89 @@ export default function AdminPage() {
   const availablePlayers = PLAYERS.filter(p => !soldPlayerIds.includes(p.id));
   const aplusPlayers = availablePlayers.filter(p => p.category === 'APLUS');
   const basePlayers = availablePlayers.filter(p => p.category === 'BASE');
+
+  // Handle image file upload - convert to base64
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 500000) { // 500KB limit
+        setMessage({ type: 'error', text: 'Image too large. Max 500KB.' });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImageUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Save player profile
+  const saveProfile = async (playerId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pin: ADMIN_PIN,
+          playerId,
+          image: imageUrl || undefined,
+          cricHeroesUrl: cricHeroesUrl || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Profile saved!' });
+        setEditingPlayer(null);
+        setImageUrl('');
+        setCricHeroesUrl('');
+        fetchProfiles();
+      } else {
+        const data = await res.json();
+        setMessage({ type: 'error', text: data.error || 'Failed to save' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Network error' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  // Delete profile image
+  const deleteProfileImage = async (playerId: string) => {
+    if (!confirm('Remove this player\'s image?')) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/players', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: ADMIN_PIN, playerId, field: 'image' }),
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Image removed!' });
+        fetchProfiles();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to remove' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  // Start editing a player
+  const startEditing = (player: Player) => {
+    setEditingPlayer(player.id);
+    setImageUrl(profiles[player.id]?.image || '');
+    setCricHeroesUrl(profiles[player.id]?.cricHeroesUrl || '');
+  };
+
+  // Filter players for profile search
+  const filteredProfilePlayers = ALL_PLAYERS.filter(p =>
+    p.name.toLowerCase().includes(profileSearch.toLowerCase())
+  );
 
   // PIN Login Screen
   if (!isAuthenticated) {
@@ -157,11 +267,43 @@ export default function AdminPage() {
                 {state.soldCount} / {state.totalPlayers} sold • {availablePlayers.length} remaining
               </p>
             </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/players"
+                className="text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
+              >
+                👥 View All
+              </Link>
+              <button
+                onClick={() => setIsAuthenticated(false)}
+                className="text-sm text-white/50 hover:text-white"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-2 mt-3">
             <button
-              onClick={() => setIsAuthenticated(false)}
-              className="text-sm text-white/50 hover:text-white"
+              onClick={() => setActiveTab('auction')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'auction'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'
+              }`}
             >
-              Logout
+              🎯 Auction Control
+            </button>
+            <button
+              onClick={() => setActiveTab('profiles')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'profiles'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'
+              }`}
+            >
+              📸 Player Profiles
             </button>
           </div>
         </div>
@@ -178,7 +320,10 @@ export default function AdminPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        
+
+        {/* AUCTION TAB */}
+        {activeTab === 'auction' && (
+          <>
         {/* Current Status */}
         <section className="glass rounded-2xl p-4">
           <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
@@ -356,6 +501,195 @@ export default function AdminPage() {
             🔄 Reset Entire Auction
           </button>
         </section>
+          </>
+        )}
+
+        {/* PROFILES TAB */}
+        {activeTab === 'profiles' && (
+          <>
+            {/* Instructions */}
+            <section className="glass rounded-2xl p-4">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
+                📸 Manage Player Profiles
+              </h2>
+              <p className="text-sm text-white/60 mb-2">
+                Add photos and CricHeroes links for each player. You can:
+              </p>
+              <ul className="text-sm text-white/50 space-y-1 ml-4 list-disc">
+                <li>Upload a photo (max 500KB) or paste an image URL</li>
+                <li>Add a CricHeroes profile link</li>
+                <li>Paste a screenshot URL from CricHeroes</li>
+              </ul>
+            </section>
+
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search players..."
+              value={profileSearch}
+              onChange={(e) => setProfileSearch(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+
+            {/* Player List */}
+            <div className="space-y-3">
+              {filteredProfilePlayers.map(player => {
+                const profile = profiles[player.id];
+                const isEditing = editingPlayer === player.id;
+
+                return (
+                  <div key={player.id} className="glass rounded-xl p-4">
+                    <div className="flex items-start gap-4">
+                      {/* Avatar/Image */}
+                      <div className="relative">
+                        {profile?.image ? (
+                          <img
+                            src={profile.image}
+                            alt={player.name}
+                            className="w-16 h-16 rounded-full object-cover ring-2 ring-white/20"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-xl font-bold ring-2 ring-white/20">
+                            {getInitials(player.name)}
+                          </div>
+                        )}
+                        {profile?.image && (
+                          <button
+                            onClick={() => deleteProfileImage(player.id)}
+                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center hover:bg-red-600"
+                            title="Remove image"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-white">{player.name}</h3>
+                          <span className="text-xs bg-white/10 text-white/50 px-2 py-0.5 rounded">
+                            {getRoleIcon(player.role)} {player.role}
+                          </span>
+                          {(player.category === 'CAPTAIN' || player.category === 'VICE_CAPTAIN') && (
+                            <span className="text-xs bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded">
+                              {player.category === 'CAPTAIN' ? 'C' : 'VC'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-white/40 mt-1">{player.club}</p>
+
+                        {profile?.cricHeroesUrl && !isEditing && (
+                          <a
+                            href={profile.cricHeroesUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:underline mt-1 inline-block"
+                          >
+                            🏏 CricHeroes Profile →
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Edit Button */}
+                      {!isEditing && (
+                        <button
+                          onClick={() => startEditing(player)}
+                          className="text-sm bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Edit Form */}
+                    {isEditing && (
+                      <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
+                        {/* Image Upload */}
+                        <div>
+                          <label className="text-xs text-white/50 block mb-1">Photo</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              ref={fileInputRef}
+                              className="hidden"
+                            />
+                            <button
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors"
+                            >
+                              📁 Upload File
+                            </button>
+                            <input
+                              type="text"
+                              placeholder="Or paste image URL..."
+                              value={imageUrl.startsWith('data:') ? '(File uploaded)' : imageUrl}
+                              onChange={(e) => setImageUrl(e.target.value)}
+                              className="flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              disabled={imageUrl.startsWith('data:')}
+                            />
+                          </div>
+                          {imageUrl && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <img src={imageUrl} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
+                              <button
+                                onClick={() => setImageUrl('')}
+                                className="text-xs text-red-400 hover:text-red-300"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* CricHeroes URL */}
+                        <div>
+                          <label className="text-xs text-white/50 block mb-1">CricHeroes Profile URL</label>
+                          <input
+                            type="text"
+                            placeholder="https://cricheroes.com/player/..."
+                            value={cricHeroesUrl}
+                            onChange={(e) => setCricHeroesUrl(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveProfile(player.id)}
+                            disabled={loading}
+                            className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-colors"
+                          >
+                            {loading ? 'Saving...' : '✓ Save'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingPlayer(null);
+                              setImageUrl('');
+                              setCricHeroesUrl('');
+                            }}
+                            className="px-4 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {filteredProfilePlayers.length === 0 && (
+              <div className="text-center py-8 text-white/50">
+                No players found
+              </div>
+            )}
+          </>
+        )}
       </div>
     </main>
   );
