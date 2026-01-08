@@ -3,7 +3,7 @@
 import { Team, Player } from '@/lib/types';
 
 interface TeamCardProps {
-  team: Team & { roster: Player[] };
+  team: Team & { roster: Player[]; captainPlayer?: Player; viceCaptainPlayer?: Player };
   isHighlighted?: boolean;
 }
 
@@ -19,11 +19,19 @@ function getInitials(name: string): string {
 function PlayerBadge({ player }: { player: Player }) {
   return (
     <div className="flex items-center gap-2 bg-white/5 rounded-lg px-2 py-1.5">
-      <div 
-        className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold"
-      >
-        {getInitials(player.name)}
-      </div>
+      {player.image ? (
+        <img
+          src={player.image}
+          alt={player.name}
+          className="w-6 h-6 rounded-full object-cover"
+        />
+      ) : (
+        <div
+          className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold"
+        >
+          {getInitials(player.name)}
+        </div>
+      )}
       <span className="text-sm text-white/90 truncate">{player.name}</span>
       {player.category === 'APLUS' && (
         <span className="text-[10px] bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded font-medium">
@@ -69,13 +77,35 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
       </div>
 
       {/* Captain & Vice Captain */}
-      <div className="space-y-1 mb-3">
+      <div className="space-y-2 mb-3">
         <div className="flex items-center gap-2 text-sm">
           <span className="text-amber-400 font-medium w-6">C</span>
+          {team.captainPlayer?.image ? (
+            <img
+              src={team.captainPlayer.image}
+              alt={team.captain}
+              className="w-6 h-6 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold">
+              {getInitials(team.captain)}
+            </div>
+          )}
           <span className="text-white/90">{team.captain}</span>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="text-amber-400/70 font-medium w-6">VC</span>
+          {team.viceCaptainPlayer?.image ? (
+            <img
+              src={team.viceCaptainPlayer.image}
+              alt={team.viceCaptain}
+              className="w-6 h-6 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-semibold">
+              {getInitials(team.viceCaptain)}
+            </div>
+          )}
           <span className="text-white/90">{team.viceCaptain}</span>
         </div>
       </div>

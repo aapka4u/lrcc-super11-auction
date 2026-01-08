@@ -1,43 +1,71 @@
 import { kv } from '@vercel/kv';
 import { NextRequest, NextResponse } from 'next/server';
-import { AuctionState } from '@/lib/types';
-import { getInitialState, ADMIN_PIN, PLAYERS, TEAMS, getPlayerById, getTeamById } from '@/lib/data';
+import { AuctionState, Player, PlayerProfile } from '@/lib/types';
+import { getInitialState, ADMIN_PIN, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById } from '@/lib/data';
 
 const STATE_KEY = 'auction:state';
+const PROFILES_KEY = 'player:profiles';
+
+// Helper to find player from both auction pool and team leaders
+const findPlayer = (id: string): Player | undefined =>
+  PLAYERS.find(p => p.id === id) || TEAM_LEADERS.find(p => p.id === id);
+
+// Helper to merge player with profile image from KV
+const mergeProfile = (player: Player, profiles: Record<string, PlayerProfile>): Player => ({
+  ...player,
+  image: profiles[player.id]?.image || player.image,
+  cricHeroesUrl: profiles[player.id]?.cricHeroesUrl || player.cricHeroesUrl,
+});
 
 // GET: Fetch current state (public)
 export async function GET() {
   try {
-    let state = await kv.get<AuctionState>(STATE_KEY);
-    
-    if (!state) {
-      state = getInitialState();
-      await kv.set(STATE_KEY, state);
+    // Fetch auction state and player profiles in parallel
+    const [state, profiles] = await Promise.all([
+      kv.get<AuctionState>(STATE_KEY),
+      kv.get<Record<string, PlayerProfile>>(PROFILES_KEY),
+    ]);
+
+    let auctionState = state;
+    if (!auctionState) {
+      auctionState = getInitialState();
+      await kv.set(STATE_KEY, auctionState);
     }
 
-    // Build public response with team rosters
-    const teamsWithRosters = TEAMS.map(team => ({
-      ...team,
-      roster: (state!.rosters[team.id] || [])
-        .map(playerId => getPlayerById(playerId))
-        .filter(Boolean),
-    }));
+    const playerProfiles = profiles || {};
 
-    const currentPlayer = state.currentPlayerId 
-      ? getPlayerById(state.currentPlayerId) 
+    // Build public response with team rosters and captain/VC player objects
+    const teamsWithRosters = TEAMS.map(team => {
+      // Find captain and VC player objects
+      const captainPlayer = TEAM_LEADERS.find(p => p.teamId === team.id && p.category === 'CAPTAIN');
+      const viceCaptainPlayer = TEAM_LEADERS.find(p => p.teamId === team.id && p.category === 'VICE_CAPTAIN');
+
+      return {
+        ...team,
+        captainPlayer: captainPlayer ? mergeProfile(captainPlayer, playerProfiles) : undefined,
+        viceCaptainPlayer: viceCaptainPlayer ? mergeProfile(viceCaptainPlayer, playerProfiles) : undefined,
+        roster: (auctionState!.rosters[team.id] || [])
+          .map(playerId => findPlayer(playerId))
+          .filter((p): p is Player => p !== undefined)
+          .map(p => mergeProfile(p, playerProfiles)),
+      };
+    });
+
+    const currentPlayer = auctionState.currentPlayerId
+      ? findPlayer(auctionState.currentPlayerId)
       : null;
-    
-    const soldToTeam = state.soldToTeamId 
-      ? getTeamById(state.soldToTeamId) 
+
+    const soldToTeam = auctionState.soldToTeamId
+      ? getTeamById(auctionState.soldToTeamId)
       : null;
 
     return NextResponse.json({
-      status: state.status,
-      currentPlayer,
+      status: auctionState.status,
+      currentPlayer: currentPlayer ? mergeProfile(currentPlayer, playerProfiles) : null,
       soldToTeam,
       teams: teamsWithRosters,
-      lastUpdate: state.lastUpdate,
-      soldCount: state.soldPlayers.length,
+      lastUpdate: auctionState.lastUpdate,
+      soldCount: auctionState.soldPlayers.length,
       totalPlayers: PLAYERS.length,
     });
   } catch (error) {

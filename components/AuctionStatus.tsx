@@ -91,9 +91,17 @@ export default function AuctionStatus({ status, currentPlayer, soldToTeam }: Auc
 
           {/* Player */}
           <div className="flex items-center justify-center gap-4 mb-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-2xl font-bold">
-              {getInitials(currentPlayer.name)}
-            </div>
+            {currentPlayer.image ? (
+              <img
+                src={currentPlayer.image}
+                alt={currentPlayer.name}
+                className="w-16 h-16 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-2xl font-bold">
+                {getInitials(currentPlayer.name)}
+              </div>
+            )}
             <div className="text-left">
               <h2 className="text-2xl font-bold text-white">{currentPlayer.name}</h2>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -150,9 +158,17 @@ export default function AuctionStatus({ status, currentPlayer, soldToTeam }: Auc
 
         {/* Player */}
         <div className="flex flex-col items-center">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-3xl font-bold mb-4 ring-4 ring-red-500/30">
-            {getInitials(currentPlayer.name)}
-          </div>
+          {currentPlayer.image ? (
+            <img
+              src={currentPlayer.image}
+              alt={currentPlayer.name}
+              className="w-20 h-20 rounded-full object-cover mb-4 ring-4 ring-red-500/30"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-3xl font-bold mb-4 ring-4 ring-red-500/30">
+              {getInitials(currentPlayer.name)}
+            </div>
+          )}
 
           <h2 className="text-3xl font-bold text-white mb-2">{currentPlayer.name}</h2>
 

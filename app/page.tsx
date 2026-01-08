@@ -10,7 +10,7 @@ interface PublicState {
   status: Status;
   currentPlayer: Player | null;
   soldToTeam: Team | null;
-  teams: (Team & { roster: Player[] })[];
+  teams: (Team & { roster: Player[]; captainPlayer?: Player; viceCaptainPlayer?: Player })[];
   lastUpdate: number;
   soldCount: number;
   totalPlayers: number;
