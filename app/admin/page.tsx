@@ -4,6 +4,16 @@ import { useEffect, useState, useCallback } from 'react';
 import { TEAMS, PLAYERS, ADMIN_PIN } from '@/lib/data';
 import { Team, Player, AuctionStatus } from '@/lib/types';
 
+function getRoleIcon(role?: string): string {
+  switch (role) {
+    case 'Batsman': return '🏏';
+    case 'Bowler': return '🎯';
+    case 'All-rounder': return '⚡';
+    case 'WK-Batsman': return '🧤';
+    default: return '';
+  }
+}
+
 interface AdminState {
   status: AuctionStatus;
   currentPlayer: Player | null;
@@ -185,7 +195,10 @@ export default function AdminPage() {
             </div>
             {state.currentPlayer && (
               <span className="text-white font-semibold">
-                {state.currentPlayer.name}
+                {getRoleIcon(state.currentPlayer.role)} {state.currentPlayer.name}
+                {state.currentPlayer.role && (
+                  <span className="ml-2 text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">{state.currentPlayer.role}</span>
+                )}
                 {state.currentPlayer.category === 'APLUS' && (
                   <span className="ml-2 text-xs bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded">A+</span>
                 )}
@@ -210,21 +223,21 @@ export default function AdminPage() {
               className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="" className="bg-slate-800">-- Select a player --</option>
-              
+
               {aplusPlayers.length > 0 && (
                 <optgroup label="⭐ A+ Players" className="bg-slate-800">
                   {aplusPlayers.map(p => (
                     <option key={p.id} value={p.id} className="bg-slate-800">
-                      {p.name} ({p.club}) {p.availability !== 'full' ? `⚠️ ${p.availability}` : ''}
+                      {getRoleIcon(p.role)} {p.name} • {p.role || 'Player'} ({p.club}) {p.availability !== 'full' ? `⚠️ ${p.availability}` : ''}
                     </option>
                   ))}
                 </optgroup>
               )}
-              
+
               <optgroup label="Base Players" className="bg-slate-800">
                 {basePlayers.map(p => (
                   <option key={p.id} value={p.id} className="bg-slate-800">
-                    {p.name} ({p.club}) {p.availability !== 'full' ? `⚠️ ${p.availability}` : ''}
+                    {getRoleIcon(p.role)} {p.name} • {p.role || 'Player'} ({p.club}) {p.availability !== 'full' ? `⚠️ ${p.availability}` : ''}
                   </option>
                 ))}
               </optgroup>
@@ -309,14 +322,18 @@ export default function AdminPage() {
                   </span>
                 </div>
                 <div className="text-sm text-white/60">
-                  <span className="text-amber-400">C:</span> {team.captain} • 
+                  <span className="text-amber-400">C:</span> {team.captain} •
                   <span className="text-amber-400/70 ml-1">VC:</span> {team.viceCaptain}
-                  {team.roster.length > 0 && (
-                    <span className="ml-2">
-                      • {team.roster.map(p => p.name).join(', ')}
-                    </span>
-                  )}
                 </div>
+                {team.roster.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {team.roster.map(p => (
+                      <span key={p.id} className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
+                        {getRoleIcon(p.role)} {p.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

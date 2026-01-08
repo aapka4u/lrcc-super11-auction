@@ -13,6 +13,7 @@ export interface Player {
   category: 'APLUS' | 'BASE';
   club: 'LRCC' | 'Super11';
   availability: 'full' | 'till_11' | 'till_12' | 'tentative';
+  role?: 'Batsman' | 'Bowler' | 'All-rounder' | 'WK-Batsman';
 }
 
 export type AuctionStatus = 'IDLE' | 'LIVE' | 'SOLD';
