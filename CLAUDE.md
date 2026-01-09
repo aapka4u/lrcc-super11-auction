@@ -1,16 +1,17 @@
 # CLAUDE.md - Project Context for AI Assistants
 
-This file provides comprehensive context about the LRCC + Super 11 Premier League 2026 auction application for AI coding assistants.
+This file provides comprehensive context about **DraftCast** - a live auction broadcast platform, currently hosting the LRCC + Super 11 Premier League 2026 event.
 
 ## Project Overview
 
 A real-time cricket player auction display system for a local cricket league. The auctioneer uses an admin panel to control the auction flow, while viewers (the 48 players) watch live updates on their devices.
 
 ### Live URLs
-- **Public Auction**: https://lrcc-super11-auction.vercel.app
-- **Admin Panel**: https://lrcc-super11-auction.vercel.app/admin (PIN: 2237)
-- **All Players**: https://lrcc-super11-auction.vercel.app/players
-- **Broadcast Mode**: https://lrcc-super11-auction.vercel.app/broadcast (full-screen display)
+- **Landing Page**: https://draftcast.app
+- **Public Auction**: https://draftcast.app/lrccsuper11
+- **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
+- **All Players**: https://draftcast.app/lrccsuper11/players
+- **Broadcast Mode**: https://draftcast.app/lrccsuper11/broadcast (full-screen display)
 - **GitHub**: https://github.com/aapka4u/lrcc-super11-auction
 
 ## Tech Stack
@@ -25,19 +26,23 @@ A real-time cricket player auction display system for a local cricket league. Th
 
 ```
 app/
-├── page.tsx              # Public auction display (main viewer page)
+├── page.tsx              # DraftCast landing page
 ├── layout.tsx            # Root layout with metadata
-├── admin/page.tsx        # Admin control panel (PIN protected)
-├── broadcast/page.tsx    # Full-screen broadcast display
-├── players/page.tsx      # All players list with search/filter
 ├── health/page.tsx       # Health check endpoint
+├── lrccsuper11/          # LRCC + Super 11 event
+│   ├── page.tsx          # Public auction display (main viewer page)
+│   ├── admin/page.tsx    # Admin control panel (PIN protected)
+│   ├── broadcast/page.tsx # Full-screen broadcast display
+│   └── players/page.tsx  # All players list with search/filter
 └── api/
     ├── state/route.ts    # Main auction state API (GET/POST)
     └── players/route.ts  # Player profiles API (images, CricHeroes links)
 
 components/
 ├── AuctionStatus.tsx     # Live auction status display (IDLE/LIVE/SOLD/PAUSED)
-└── TeamCard.tsx          # Team roster card with budget info
+├── TeamCard.tsx          # Team roster card with budget info
+├── TeamTeaser.tsx        # Team reveal teaser animation
+└── TeamStoryVideo.tsx    # Team story video generation
 
 lib/
 ├── data.ts               # Player & team static data, calculateMaxBid()
@@ -60,15 +65,15 @@ Each team has a captain and vice-captain already assigned (not in auction pool).
 
 ### Players
 - **12 Team Leaders**: Captains and Vice-Captains (in `TEAM_LEADERS` array, not auctioned)
-- **36 Auction Pool**: 6 A+ players + 30 Base players (in `PLAYERS` array)
+- **36 Auction Pool**: 6 Star Players + 30 League Players (in `PLAYERS` array)
 - **48 Total Players**: Combined in `ALL_PLAYERS` array
 
 ### Player Categories & Base Prices
 ```typescript
 // lib/types.ts
 export const BASE_PRICES = {
-  APLUS: 2500,      // Premium players
-  BASE: 1000,       // Standard players
+  APLUS: 2500,      // Star Players (premium tier)
+  BASE: 1000,       // League Players (standard tier)
   CAPTAIN: 0,       // Pre-assigned
   VICE_CAPTAIN: 0,  // Pre-assigned
 } as const;
@@ -217,7 +222,7 @@ In admin panel: Danger Zone → Reset Entire Auction (type "RESET")
 
 Or via API:
 ```bash
-curl -X POST https://lrcc-super11-auction.vercel.app/api/state \
+curl -X POST https://draftcast.app/api/state \
   -H "Content-Type: application/json" \
   -d '{"pin":"2237","action":"RESET","confirmReset":true}'
 ```

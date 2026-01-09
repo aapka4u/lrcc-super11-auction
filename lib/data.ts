@@ -137,6 +137,8 @@ export const getInitialState = () => ({
   lastUpdate: Date.now(),
   pauseMessage: undefined,
   pauseUntil: undefined,
+  unsoldPlayers: [] as string[],
+  jokerPlayerId: null as string | null,
 });
 
 // Calculate max bid a team can make

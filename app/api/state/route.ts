@@ -38,6 +38,8 @@ export async function GET() {
     // Ensure state has budget tracking fields (for backward compatibility)
     if (!auctionState.soldPrices) auctionState.soldPrices = {};
     if (!auctionState.teamSpent) auctionState.teamSpent = Object.fromEntries(TEAMS.map(t => [t.id, 0]));
+    if (!auctionState.unsoldPlayers) auctionState.unsoldPlayers = [];
+    if (auctionState.jokerPlayerId === undefined) auctionState.jokerPlayerId = null;
 
     // Count remaining players by category and role
     const remainingPlayers = PLAYERS.filter(p => !auctionState!.soldPlayers.includes(p.id));
@@ -109,6 +111,8 @@ export async function GET() {
       remainingByRole,
       remainingAplusCount,
       biddingDurations: auctionState.biddingDurations || {},
+      unsoldPlayers: auctionState.unsoldPlayers || [],
+      jokerPlayerId: auctionState.jokerPlayerId || null,
     });
   } catch (error) {
     console.error('Error fetching state:', error);
@@ -173,6 +177,31 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Team not found' }, { status: 400 });
         }
 
+        // Get current player and base price
+        const currentPlayer = findPlayer(state.currentPlayerId);
+        if (!currentPlayer) {
+          return NextResponse.json({ error: 'Player not found' }, { status: 400 });
+        }
+        const basePrice = BASE_PRICES[currentPlayer.category as keyof typeof BASE_PRICES] || BASE_PRICES.BASE;
+        
+        // CRITICAL: Validate base price (server-side enforcement)
+        const isJoker = state.jokerPlayerId === state.currentPlayerId;
+        if (isJoker) {
+          // Joker players must be sold at exactly base price
+          if (soldPrice !== basePrice) {
+            return NextResponse.json({
+              error: `Joker card requires base price of ₹${basePrice}, not ₹${soldPrice}`
+            }, { status: 400 });
+          }
+        } else {
+          // Non-joker players must be sold at or above base price
+          if (soldPrice < basePrice) {
+            return NextResponse.json({
+              error: `Sold price ₹${soldPrice} is below base price ₹${basePrice} for ${currentPlayer.category} player`
+            }, { status: 400 });
+          }
+        }
+
         const currentSpent = state.teamSpent[teamId] || 0;
         const rosterSize = (state.rosters[teamId] || []).length;
 
@@ -185,8 +214,9 @@ export async function POST(request: NextRequest) {
 
         // Calculate max bid for this team
         const maxBidAllowed = calculateMaxBid(teamId, currentSpent, rosterSize, remainingAplusAfter, remainingBaseAfter);
-
-        if (soldPrice > maxBidAllowed) {
+        
+        // Joker players bypass max bid check (already validated at base price)
+        if (!isJoker && soldPrice > maxBidAllowed) {
           return NextResponse.json({
             error: `Bid of ₹${soldPrice} exceeds max allowed ₹${maxBidAllowed} for ${team.name}. They need to reserve budget for remaining players.`
           }, { status: 400 });
@@ -213,15 +243,27 @@ export async function POST(request: NextRequest) {
         state.soldPrices[state.currentPlayerId] = soldPrice;
         state.teamSpent[teamId] = currentSpent + soldPrice;
         state.auctionStartTime = undefined; // Reset for next auction
+        state.jokerPlayerId = null; // Clear joker after sale
+        // Remove from unsold list if was there
+        const currentId = state.currentPlayerId;
+        if (state.unsoldPlayers?.includes(currentId!) && currentId) {
+          state.unsoldPlayers = state.unsoldPlayers.filter(id => id !== currentId);
+        }
         break;
 
       case 'UNSOLD':
         // Mark player as unsold (skip)
         if (state.currentPlayerId) {
+          // Add to unsold players list
+          if (!state.unsoldPlayers) state.unsoldPlayers = [];
+          if (!state.unsoldPlayers.includes(state.currentPlayerId)) {
+            state.unsoldPlayers = [...state.unsoldPlayers, state.currentPlayerId];
+          }
           // Don't add to sold players, just clear
           state.status = 'IDLE';
           state.currentPlayerId = null;
           state.soldToTeamId = null;
+          state.jokerPlayerId = null; // Clear joker if set
         }
         break;
 
@@ -230,7 +272,43 @@ export async function POST(request: NextRequest) {
         state.status = 'IDLE';
         state.currentPlayerId = null;
         state.soldToTeamId = null;
+        state.jokerPlayerId = null; // Clear joker
         break;
+
+      case 'JOKER':
+        // Mark current player as joker (can be claimed at base price)
+        if (state.currentPlayerId && state.status === 'LIVE') {
+          state.jokerPlayerId = state.currentPlayerId;
+        }
+        break;
+
+      case 'RANDOM':
+        // Get random next player based on priority: Star → League → Unsold
+        const remainingPlayers = PLAYERS.filter(p => !state!.soldPlayers.includes(p.id));
+        const unsoldPlayers = state!.unsoldPlayers || [];
+        const unsoldPlayerObjects = unsoldPlayers
+          .map(id => PLAYERS.find(p => p.id === id))
+          .filter((p): p is Player => p !== undefined);
+        
+        const starPlayers = remainingPlayers.filter(p => p.category === 'APLUS');
+        const leaguePlayers = remainingPlayers.filter(p => p.category === 'BASE');
+        
+        let randomPlayer: Player | undefined;
+        
+        // Priority: Star → League → Unsold
+        if (starPlayers.length > 0) {
+          randomPlayer = starPlayers[Math.floor(Math.random() * starPlayers.length)];
+        } else if (leaguePlayers.length > 0) {
+          randomPlayer = leaguePlayers[Math.floor(Math.random() * leaguePlayers.length)];
+        } else if (unsoldPlayerObjects.length > 0) {
+          randomPlayer = unsoldPlayerObjects[Math.floor(Math.random() * unsoldPlayerObjects.length)];
+        }
+        
+        if (randomPlayer) {
+          return NextResponse.json({ success: true, randomPlayer: { id: randomPlayer.id, name: randomPlayer.name } });
+        } else {
+          return NextResponse.json({ error: 'No players available' }, { status: 400 });
+        }
 
       case 'PAUSE':
         // Pause the auction with optional message and duration

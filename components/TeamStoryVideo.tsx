@@ -130,7 +130,7 @@ export default function TeamStoryVideo({ team, soldPrices, biddingDurations, onC
     );
   }
   if (analysis.aplusCount >= 2) {
-    storyHighlights.push(`${analysis.aplusCount} premium A+ players secured!`);
+    storyHighlights.push(`${analysis.aplusCount} Star Players secured!`);
   }
   if (analysis.lrccCount >= 4) {
     storyHighlights.push('LRCC reunion squad assembled!');
@@ -266,7 +266,7 @@ export default function TeamStoryVideo({ team, soldPrices, biddingDurations, onC
               <div className="text-white/70 text-sm">
                 {analysis.aplusCount > 0 && (
                   <span className="inline-flex items-center gap-1 bg-amber-500/20 px-3 py-1 rounded-full mr-2">
-                    ⭐ {analysis.aplusCount} A+ Players
+                    ⭐ {analysis.aplusCount} Star Players
                   </span>
                 )}
               </div>

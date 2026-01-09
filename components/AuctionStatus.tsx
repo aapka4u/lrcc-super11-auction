@@ -260,11 +260,11 @@ export default function AuctionStatus({ status, currentPlayer, soldToTeam }: Auc
             <div className="absolute -top-3 -right-3 z-20">
               {currentPlayer.category === 'APLUS' ? (
                 <div className="bg-gradient-to-r from-amber-400 to-yellow-600 text-black font-bold px-3 py-1 rounded-lg shadow-lg border border-white/20 text-sm">
-                  A+ PLAYER
+                  STAR PLAYER
                 </div>
               ) : (
                 <div className="bg-white/10 backdrop-blur-md text-white/80 font-bold px-3 py-1 rounded-lg shadow-lg border border-white/20 text-sm">
-                  {currentPlayer.category === 'BASE' ? 'BASE CATEGORY' : 'CAPTAIN'}
+                  {currentPlayer.category === 'BASE' ? 'LEAGUE PLAYER' : 'CAPTAIN'}
                 </div>
               )}
             </div>

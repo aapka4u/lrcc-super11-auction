@@ -1,26 +1,31 @@
-# 🏏 LRCC + Super 11 Premier League 2026 - Live Auction Display
+# 🏏 DraftCast - Live Auction Broadcast Platform
 
 A real-time auction display board for cricket player auctions. Viewers on mobile/desktop see live updates as players are auctioned to teams.
 
+**Current Event**: LRCC + Super 11 Premier League 2026
+
 ## Live URLs
 
-- **Public Auction**: https://lrcc-super11-auction.vercel.app
-- **Admin Panel**: https://lrcc-super11-auction.vercel.app/admin (PIN: 2237)
-- **All Players**: https://lrcc-super11-auction.vercel.app/players
+- **Landing Page**: https://draftcast.app
+- **Public Auction**: https://draftcast.app/lrccsuper11
+- **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
+- **All Players**: https://draftcast.app/lrccsuper11/players
+- **Broadcast Mode**: https://draftcast.app/lrccsuper11/broadcast
 - **GitHub**: https://github.com/aapka4u/lrcc-super11-auction
 
 ## Features
 
-- **Public Display** (`/`): Shows live auction status, team rosters building up
-- **Broadcast Mode** (`/broadcast`): Full-screen display for big screens/projectors
-- **Admin Console** (`/admin`): PIN-protected control panel with two tabs:
+- **Landing Page** (`/`): DraftCast platform landing with active events
+- **Public Display** (`/lrccsuper11`): Shows live auction status, team rosters building up
+- **Broadcast Mode** (`/lrccsuper11/broadcast`): Full-screen display for big screens/projectors
+- **Admin Console** (`/lrccsuper11/admin`): PIN-protected control panel with two tabs:
   - **Auction Control**: Start bidding, enter sold price, assign to teams
   - **Player Profiles**: Upload player images (max 1MB), add CricHeroes profile links
 - **Budget Tracking**:
   - Real-time budget display for each team
   - Max bid calculation (ensures teams can afford remaining picks)
   - Sold prices tracked and displayed in admin
-- **Players Page** (`/players`): Browse all 48 players with filtering and search
+- **Players Page** (`/lrccsuper11/players`): Browse all 48 players with filtering and search
 - **Player Roles**: Visual role indicators with icons:
   - 🏏 Batsman
   - 🎯 Bowler
@@ -70,7 +75,7 @@ git push -u origin main
 
 ### Admin Workflow:
 
-1. Open `/admin` on your phone/laptop
+1. Open `/lrccsuper11/admin` on your phone/laptop
 2. Enter PIN: `2237`
 3. **Select player** from dropdown → Click "Start Auction"
 4. Viewers now see "🔴 LIVE: [Player Name]"
@@ -82,7 +87,7 @@ git push -u origin main
 
 ### Budget Rules:
 - Each team must have 8 players total (Captain + Vice-Captain + 6 auction picks)
-- A+ players have base price ₹2,500, Base players ₹1,000
+- Star Players have base price ₹2,500, League Players ₹1,000
 - Teams cannot bid more than their "max bid" (calculated to ensure they can buy remaining players)
 - Admin sees max bid and remaining budget for each team in real-time
 
@@ -97,9 +102,9 @@ git push -u origin main
 All player and team data is pre-configured:
 
 - **6 Teams** with Captain & Vice-Captain (12 team leaders)
-- **36 Players** in auction pool (6 A+ / 30 Base)
+- **36 Players** in auction pool (6 Star Players / 30 League Players)
 - **48 Total Players** (12 team leaders + 36 auction pool)
-- **A+ Players**: Bir, Puneet, Tushar, Akash, Ajinkya, Sayed Saadat
+- **Star Players**: Bir, Puneet, Tushar, Akash, Ajinkya, Sayed Saadat
 - **Clubs**: LRCC (30 players) and Super11 (18 players)
 
 ## Teams
@@ -149,19 +154,23 @@ All player and team data is pre-configured:
 
 ```
 app/
-├── page.tsx              # Public auction display
+├── page.tsx              # DraftCast landing page
 ├── layout.tsx            # Root layout with metadata
-├── admin/page.tsx        # Admin control panel
-├── broadcast/page.tsx    # Full-screen broadcast display
-├── players/page.tsx      # All players list
 ├── health/page.tsx       # Health check endpoint
+├── lrccsuper11/          # LRCC + Super 11 event
+│   ├── page.tsx          # Public auction display
+│   ├── admin/page.tsx    # Admin control panel
+│   ├── broadcast/page.tsx # Full-screen broadcast display
+│   └── players/page.tsx  # All players list
 └── api/
     ├── state/route.ts    # Auction state API (GET/POST)
     └── players/route.ts  # Player profiles API
 
 components/
 ├── AuctionStatus.tsx     # Live auction status display
-└── TeamCard.tsx          # Team roster card with budgets
+├── TeamCard.tsx          # Team roster card with budgets
+├── TeamTeaser.tsx        # Team reveal teaser animation
+└── TeamStoryVideo.tsx    # Team story video generation
 
 lib/
 ├── data.ts               # Player & team data, calculateMaxBid()

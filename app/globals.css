@@ -134,11 +134,11 @@ body {
   animation: shimmer 2s infinite;
 }
 
-/* Glass effect */
+/* Glass effect - darker, more readable */
 .glass {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 /* Live indicator */

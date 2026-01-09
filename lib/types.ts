@@ -54,6 +54,9 @@ export interface AuctionState {
   // Bidding tracking for story generation
   auctionStartTime?: number; // When current player went LIVE
   biddingDurations?: Record<string, number>; // playerId -> seconds it took to sell
+  // New features
+  unsoldPlayers?: string[]; // Player IDs that were marked as unsold
+  jokerPlayerId?: string | null; // Current joker player (can be claimed at base price)
 }
 
 // Sale history for team stories

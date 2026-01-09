@@ -18,7 +18,7 @@ function getInitials(name: string): string {
 
 function PlayerBadge({ player }: { player: Player }) {
   return (
-    <div className="flex items-center gap-2 bg-white/5 rounded-lg px-2 py-1.5">
+    <div className="flex items-center gap-2 bg-slate-800/80 rounded-lg px-2 py-1.5">
       {player.image ? (
         <img
           src={player.image}
@@ -27,12 +27,12 @@ function PlayerBadge({ player }: { player: Player }) {
         />
       ) : (
         <div
-          className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-semibold"
+          className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white"
         >
           {getInitials(player.name)}
         </div>
       )}
-      <span className="text-sm text-white/90 truncate font-medium">{player.name}</span>
+      <span className="text-sm text-white truncate font-medium">{player.name}</span>
       {player.category === 'APLUS' && (
         <span className="text-[10px] bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded font-medium">
           A+
@@ -48,13 +48,14 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
   return (
     <div
       className={`
-        glass rounded-2xl p-4 transition-all duration-500 relative overflow-hidden
+        rounded-2xl p-4 transition-all duration-500 relative overflow-hidden
         ${isHighlighted
-          ? 'scale-[1.05] z-10'
-          : 'hover:bg-white/10'
+          ? 'scale-[1.02] z-10'
+          : 'glass hover:bg-slate-800/90'
         }
       `}
       style={isHighlighted ? {
+        backgroundColor: '#0f172a',
         boxShadow: `0 0 40px ${team.color}60, 0 0 80px ${team.color}30`,
         border: `2px solid ${team.color}`,
       } : undefined}
@@ -106,7 +107,7 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-white truncate">{team.name}</h3>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-slate-400">
             {totalPlayers} players
           </p>
         </div>
@@ -131,14 +132,14 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
               className="w-8 h-8 rounded-md object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-semibold">
+            <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white">
               {getInitials(team.captain)}
             </div>
           )}
-          <span className="text-white/90 font-medium">{team.captain}</span>
+          <span className="text-white font-medium">{team.captain}</span>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-amber-400/70 font-medium w-6">VC</span>
+          <span className="text-amber-500/80 font-medium w-6">VC</span>
           {team.viceCaptainPlayer?.image ? (
             <img
               src={team.viceCaptainPlayer.image}
@@ -146,11 +147,11 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
               className="w-8 h-8 rounded-md object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-semibold">
+            <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white">
               {getInitials(team.viceCaptain)}
             </div>
           )}
-          <span className="text-white/90 font-medium">{team.viceCaptain}</span>
+          <span className="text-white font-medium">{team.viceCaptain}</span>
         </div>
       </div>
 
@@ -174,7 +175,7 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
 
       {/* Empty state */}
       {team.roster.length === 0 && (
-        <p className="text-xs text-white/30 italic text-center py-2">
+        <p className="text-xs text-slate-500 italic text-center py-2">
           No players bought yet
         </p>
       )}
