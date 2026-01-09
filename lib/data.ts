@@ -141,8 +141,12 @@ export const getInitialState = () => ({
   jokerPlayerId: null as string | null,
 });
 
+// Round price to nearest 100 (bid increments are in 100s)
+const roundTo100 = (price: number): number => Math.round(price / 100) * 100;
+
 // Calculate max bid a team can make
 // Formula: remaining budget - (players still needed * base price for remaining players)
+// Returns value rounded down to nearest 100 (bid increment)
 export const calculateMaxBid = (
   teamId: string,
   teamSpent: number,
@@ -163,7 +167,8 @@ export const calculateMaxBid = (
   const reserveForFuturePlayers = (playersStillNeeded - 1) * BASE_PRICES.BASE;
 
   const maxBid = remainingBudget - reserveForFuturePlayers;
-  return Math.max(0, maxBid);
+  // Round down to nearest 100 to ensure valid bid increment
+  return Math.max(0, Math.floor(maxBid / 100) * 100);
 };
 
 export const getPlayerById = (id: string): Player | undefined => 

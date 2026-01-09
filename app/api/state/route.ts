@@ -181,6 +181,10 @@ export async function POST(request: NextRequest) {
         if (typeof soldPrice !== 'number' || soldPrice < 0) {
           return NextResponse.json({ error: 'Valid sold price required' }, { status: 400 });
         }
+        // Validate bid is multiple of 100
+        if (soldPrice % 100 !== 0) {
+          return NextResponse.json({ error: 'Bid must be a multiple of ₹100' }, { status: 400 });
+        }
         // CRITICAL: Check if already sold
         if (state.soldPlayers.includes(state.currentPlayerId)) {
           return NextResponse.json({

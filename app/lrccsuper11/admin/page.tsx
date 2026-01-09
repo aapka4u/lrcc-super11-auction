@@ -1037,11 +1037,13 @@ export default function AdminPage() {
                               }
                             }}
                             onBlur={() => {
-                              // Ensure minimum base price on blur
-                              if (soldPrice < state.currentPlayerBasePrice || isNaN(soldPrice)) {
-                                setSoldPrice(state.currentPlayerBasePrice);
-                                setSoldPriceInput(state.currentPlayerBasePrice.toString());
+                              // Round to nearest 100 and ensure minimum base price
+                              let roundedPrice = Math.round(soldPrice / 100) * 100;
+                              if (roundedPrice < state.currentPlayerBasePrice || isNaN(roundedPrice)) {
+                                roundedPrice = state.currentPlayerBasePrice;
                               }
+                              setSoldPrice(roundedPrice);
+                              setSoldPriceInput(roundedPrice.toString());
                             }}
                             min={state.currentPlayerBasePrice}
                             step={100}
@@ -1051,6 +1053,9 @@ export default function AdminPage() {
                         </div>
                         {(isNaN(soldPrice) || soldPrice < state.currentPlayerBasePrice) && (
                           <p className="text-red-400 text-sm mt-2">Price must be at least ₹{state.currentPlayerBasePrice}</p>
+                        )}
+                        {soldPrice % 100 !== 0 && soldPrice >= state.currentPlayerBasePrice && (
+                          <p className="text-amber-400 text-sm mt-2">Will round to ₹{Math.round(soldPrice / 100) * 100}</p>
                         )}
                       </div>
 
