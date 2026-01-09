@@ -380,11 +380,32 @@ export async function POST(request: NextRequest) {
         }
         break;
 
+      case 'CORRECT': {
+        // Move player from one team to another (admin correction)
+        const { playerId, fromTeamId, toTeamId, newPrice } = body;
+        if (!playerId || !fromTeamId || !toTeamId || newPrice === undefined) {
+          return NextResponse.json({
+            error: 'CORRECT requires playerId, fromTeamId, toTeamId, newPrice'
+          }, { status: 400 });
+        }
+
+        // Remove from old team
+        const oldPrice = state.soldPrices[playerId] || 0;
+        state.rosters[fromTeamId] = (state.rosters[fromTeamId] || []).filter(id => id !== playerId);
+        state.teamSpent[fromTeamId] = (state.teamSpent[fromTeamId] || 0) - oldPrice;
+
+        // Add to new team
+        state.rosters[toTeamId] = [...(state.rosters[toTeamId] || []), playerId];
+        state.soldPrices[playerId] = newPrice;
+        state.teamSpent[toTeamId] = (state.teamSpent[toTeamId] || 0) + newPrice;
+        break;
+      }
+
       case 'RESET':
         // Full reset
         if (!confirmReset) {
-          return NextResponse.json({ 
-            error: 'Reset requires confirmation. Send confirmReset: true' 
+          return NextResponse.json({
+            error: 'Reset requires confirmation. Send confirmReset: true'
           }, { status: 400 });
         }
         state = getInitialState();
