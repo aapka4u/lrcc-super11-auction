@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { Player, Team } from '@/lib/types';
-import { analyzeIntelligence, calculateRoleGaps, TeamPreference, TeamBehavior } from '@/lib/intelligence';
+import { analyzeIntelligence, calculateRoleGaps, calculateClubGaps, ClubGap, TeamPreference, TeamBehavior, BidPrediction, StrategicRecommendation } from '@/lib/intelligence';
 import { PLAYERS, TEAMS, ALL_PLAYERS } from '@/lib/data';
 
 interface IntelligencePanelProps {
@@ -24,6 +24,69 @@ interface IntelligencePanelProps {
 const INTELLIGENCE_PASSWORD = 'boomgaard';
 const PREFERENCE_STORAGE_KEY = 'intelligence:preferences';
 
+// Helper functions for Simple Mode
+function getTopThreats(predictions: BidPrediction[], yourTeamId: string, limit: number = 2): BidPrediction[] {
+  // Get competitors sorted by likelihood, then filter to meaningful threats (>=40%)
+  const competitors = predictions
+    .filter(p => p.teamId !== yourTeamId && p.likelihood > 0)
+    .sort((a, b) => b.likelihood - a.likelihood);
+
+  // If top competitor is high enough, show threats above 40% (meaningful interest)
+  // If top is only 30%, show top 2 anyway so user knows who's most likely
+  const topLikelihood = competitors[0]?.likelihood || 0;
+  const threshold = topLikelihood >= 0.5 ? 0.4 : 0.25; // Dynamic threshold
+
+  return competitors
+    .filter(p => p.likelihood >= threshold)
+    .slice(0, limit);
+}
+
+function getTopReason(recommendation?: StrategicRecommendation, yourPred?: BidPrediction): string {
+  // Skip the status line (starts with 📊) to get the actual insight
+  if (recommendation?.reasoning) {
+    const actionableReason = recommendation.reasoning.find(r => !r.startsWith('📊'));
+    if (actionableReason) return actionableReason;
+  }
+  if (yourPred?.reasoning) {
+    const actionableReason = yourPred.reasoning.find(r => !r.startsWith('📊'));
+    if (actionableReason) return actionableReason;
+  }
+  return 'Evaluate based on need';
+}
+
+function getActionLimit(recommendation?: StrategicRecommendation, yourPred?: BidPrediction): number {
+  // For PUSH, use targetPrice. For BID, use walk-away price
+  if (recommendation?.action === 'push_price' && recommendation.targetPrice) {
+    return recommendation.targetPrice;
+  }
+  if (yourPred?.recommendedWalkAway && yourPred.recommendedWalkAway > 0) {
+    return yourPred.recommendedWalkAway;
+  }
+  return 0;
+}
+
+function getActionType(recommendation?: StrategicRecommendation, yourPred?: BidPrediction): 'BID' | 'PUSH' | 'WAIT' | 'SKIP' {
+  // Check if you're constrained OUT of this player
+  if (yourPred && yourPred.likelihood === 0) {
+    // Hard constraint - you can't/shouldn't bid
+    const isConstraint = yourPred.reasoning.some(r =>
+      r.includes('Cannot') || r.includes('Team is full') || r.includes('avoid list')
+    );
+    if (isConstraint) return 'SKIP';
+    return 'WAIT';
+  }
+
+  if (!recommendation) {
+    // No strategic recommendation - base on your own interest
+    if (yourPred && yourPred.likelihood >= 0.5) return 'BID';
+    if (yourPred && yourPred.likelihood >= 0.3) return 'BID'; // Lower threshold, show walk-away
+    return 'WAIT';
+  }
+  if (recommendation.action === 'compete') return 'BID';
+  if (recommendation.action === 'push_price') return 'PUSH';
+  return 'WAIT';
+}
+
 export default function IntelligencePanel({
   teams,
   currentPlayer,
@@ -40,7 +103,7 @@ export default function IntelligencePanel({
   const [preferenceInput, setPreferenceInput] = useState('');
   const [editingAvoidList, setEditingAvoidList] = useState<string | null>(null);
   const [avoidListInput, setAvoidListInput] = useState('');
-  const [currentBidPrice, setCurrentBidPrice] = useState<number | undefined>(undefined);
+  const [simpleMode, setSimpleMode] = useState(true); // Default to simple mode for mobile
   
   // Load preferences from localStorage
   useEffect(() => {
@@ -51,7 +114,11 @@ export default function IntelligencePanel({
       try {
         parsed = JSON.parse(saved);
         setPreferences(parsed);
-      } catch {}
+      } catch (e) {
+        console.warn('Failed to parse saved preferences:', e);
+        // Clear corrupted data
+        localStorage.removeItem(PREFERENCE_STORAGE_KEY);
+      }
     }
     
     // Auto-load avoid list for your team if not set
@@ -89,25 +156,96 @@ export default function IntelligencePanel({
     localStorage.setItem(PREFERENCE_STORAGE_KEY, JSON.stringify(updated));
   };
   
-  // Learn behaviors from history
+  // Learn behaviors from history - actually compute from auction data
   const behaviors = useMemo(() => {
     const learned: Record<string, TeamBehavior> = {};
+
+    // Group history by team
     teams.forEach(team => {
+      const teamHistory = auctionHistory.filter(h => h.teamId === team.id);
+
+      if (teamHistory.length === 0) {
+        learned[team.id] = {
+          teamId: team.id,
+          avgBidPrice: 0,
+          overpayFrequency: 0,
+          earlyBidFrequency: 0.5,
+          roleFocus: {},
+          tiltFactor: 0,
+        };
+        return;
+      }
+
+      // Calculate average bid price
+      const prices = teamHistory.map(h => h.price);
+      const avgBidPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+
+      // Calculate overpay frequency (paid > 1.2x base price)
+      const overpays = teamHistory.filter(h => {
+        const player = PLAYERS.find(p => p.id === h.playerId);
+        if (!player) return false;
+        const basePrice = player.category === 'APLUS' ? 2500 : 1000;
+        return h.price > basePrice * 1.2;
+      });
+      const overpayFrequency = overpays.length / teamHistory.length;
+
+      // Calculate role focus
+      const roleFocus: Record<string, number> = {};
+      teamHistory.forEach(h => {
+        if (h.playerRole) {
+          roleFocus[h.playerRole] = (roleFocus[h.playerRole] || 0) + 1;
+        }
+      });
+      Object.keys(roleFocus).forEach(role => {
+        roleFocus[role] = roleFocus[role] / teamHistory.length;
+      });
+
+      // Calculate tilt factor (buying quickly after losing)
+      let tiltFactor = 0;
+      const sortedHistory = [...auctionHistory].sort((a, b) => a.timestamp - b.timestamp);
+      for (let i = 1; i < sortedHistory.length; i++) {
+        const prev = sortedHistory[i - 1];
+        const curr = sortedHistory[i];
+        if (prev.teamId !== team.id && curr.teamId === team.id) {
+          const timeDiff = curr.timestamp - prev.timestamp;
+          if (timeDiff < 60000) { // Within 1 minute of losing previous player
+            tiltFactor += 0.15;
+          }
+        }
+      }
+      tiltFactor = Math.min(1, tiltFactor);
+
+      // Find last loss timestamp
+      let lastLossTimestamp: number | undefined;
+      for (let i = sortedHistory.length - 1; i >= 0; i--) {
+        if (sortedHistory[i].teamId !== team.id) {
+          lastLossTimestamp = sortedHistory[i].timestamp;
+          break;
+        }
+      }
+
       learned[team.id] = {
         teamId: team.id,
-        avgBidPrice: 0,
-        overpayFrequency: 0,
-        earlyBidFrequency: 0,
-        roleFocus: {},
-        tiltFactor: 0,
+        avgBidPrice,
+        overpayFrequency,
+        earlyBidFrequency: 0.5,
+        roleFocus,
+        tiltFactor,
+        lastLossTimestamp,
       };
     });
+
     return learned;
   }, [teams, auctionHistory]);
   
   // Identify your team (Team Rajul & Kathir)
+  // Fallback chain: look in TEAMS first, then live teams, then use empty string
   const yourTeamId = useMemo(() => {
-    return TEAMS.find(t => t.name.includes('Rajul') || t.name.includes('Kathir'))?.id || teams[0]?.id;
+    const fromStatic = TEAMS.find(t => t.name.includes('Rajul') || t.name.includes('Kathir'))?.id;
+    if (fromStatic) return fromStatic;
+    const fromLive = teams.find(t => t.name.includes('Rajul') || t.name.includes('Kathir'))?.id;
+    if (fromLive) return fromLive;
+    return teams[0]?.id || ''; // Empty string as last resort
   }, [teams]);
   
   // Calculate intelligence analysis
@@ -119,10 +257,10 @@ export default function IntelligencePanel({
       soldPrices,
       preferences,
       behaviors,
-      currentBidPrice,
+      undefined, // Remove currentBidPrice - not needed
       yourTeamId
     );
-  }, [teams, currentPlayer, soldPlayers, soldPrices, preferences, behaviors, currentBidPrice, yourTeamId]);
+  }, [teams, currentPlayer, soldPlayers, soldPrices, preferences, behaviors, yourTeamId]);
   
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,27 +329,218 @@ export default function IntelligencePanel({
               Real-time auction advisor based on team gaps, budget, scarcity, and behavior patterns
             </p>
           </div>
-          <button
-            onClick={() => setIsAuthenticated(false)}
-            className="text-sm text-white/50 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSimpleMode(!simpleMode)}
+              className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                simpleMode 
+                  ? 'bg-purple-600 text-white' 
+                  : 'bg-white/10 text-white/70 hover:bg-white/20'
+              }`}
+            >
+              {simpleMode ? '⚡ Simple' : '📊 Detailed'}
+            </button>
+            <button
+              onClick={() => setIsAuthenticated(false)}
+              className="text-sm text-white/50 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
       
-      {/* Scarcity Alerts */}
-      {analysis.scarcityAlerts.length > 0 && (
-        <div className="glass rounded-xl p-4 bg-amber-500/10 border border-amber-500/30">
-          <h3 className="text-sm font-semibold text-amber-300 mb-2">⚠️ Scarcity Alerts</h3>
-          <ul className="space-y-1">
-            {analysis.scarcityAlerts.map((alert, i) => (
-              <li key={i} className="text-sm text-amber-200">{alert}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Simple Mode View */}
+      {simpleMode && currentPlayer && (() => {
+        const yourPrediction = analysis.bidPredictions.find(p => p.teamId === yourTeamId);
+        const threats = getTopThreats(analysis.bidPredictions, yourTeamId, 2);
+        const action = getActionType(analysis.strategicRecommendation, yourPrediction);
+        const limit = getActionLimit(analysis.strategicRecommendation, yourPrediction);
+        const reason = getTopReason(analysis.strategicRecommendation, yourPrediction);
+        
+        return (
+          <>
+            {/* Critical Scarcity Alert - prioritize BIDDING WAR alerts */}
+            {analysis.scarcityAlerts.length > 0 && (() => {
+              // Find most critical alert (bidding war > critical > other)
+              const biddingWarAlert = analysis.scarcityAlerts.find(a => a.includes('BIDDING WAR'));
+              const criticalAlert = analysis.scarcityAlerts.find(a => a.includes('CRITICAL'));
+              const alertToShow = biddingWarAlert || criticalAlert || analysis.scarcityAlerts[0];
+              const isBiddingWar = alertToShow.includes('BIDDING WAR');
+              const isCritical = alertToShow.includes('CRITICAL');
+
+              return (
+                <div className={`glass rounded-xl p-3 border ${
+                  isBiddingWar
+                    ? 'bg-red-500/20 border-red-500/50 animate-pulse'
+                    : isCritical
+                    ? 'bg-red-500/10 border-red-500/30'
+                    : 'bg-amber-500/10 border-amber-500/30'
+                }`}>
+                  <p className={`text-sm font-semibold ${
+                    isBiddingWar ? 'text-red-200' : isCritical ? 'text-red-300' : 'text-amber-200'
+                  }`}>
+                    {alertToShow}
+                  </p>
+                </div>
+              );
+            })()}
+            
+            {/* Player Name Header */}
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-xl">
+                {currentPlayer.role === 'Batsman' ? '🏏' :
+                 currentPlayer.role === 'Bowler' ? '🎯' :
+                 currentPlayer.role === 'All-rounder' ? '⚡' :
+                 currentPlayer.role === 'WK-Batsman' ? '🧤' : ''}
+              </span>
+              <h3 className="text-lg font-bold text-white">{currentPlayer.name}</h3>
+              {currentPlayer.category === 'APLUS' && (
+                <span className="text-xs bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded font-semibold">⭐ Star</span>
+              )}
+              {currentPlayer.club === 'Super11' && (
+                <span className="text-xs bg-yellow-500/30 text-yellow-300 px-2 py-0.5 rounded font-semibold">🏆 Super11</span>
+              )}
+              {currentPlayer.availability === 'tentative' && (
+                <span className="text-xs bg-red-500/30 text-red-300 px-2 py-0.5 rounded">⚠️ Tentative</span>
+              )}
+              {currentPlayer.availability === 'till_11' && (
+                <span className="text-xs bg-orange-500/30 text-orange-300 px-2 py-0.5 rounded">⏰ Till 11AM</span>
+              )}
+              {currentPlayer.availability === 'till_12' && (
+                <span className="text-xs bg-orange-500/30 text-orange-300 px-2 py-0.5 rounded">⏰ Till noon</span>
+              )}
+            </div>
+            
+            {/* Simple Action Card - Mobile Optimized */}
+            <div className={`p-5 rounded-2xl text-center border-4 ${
+              action === 'PUSH' ? 'bg-orange-900/90 border-orange-500' :
+              action === 'BID' ? 'bg-green-900/90 border-green-500' :
+              action === 'SKIP' ? 'bg-red-900/90 border-red-500' :
+              'bg-slate-900/90 border-slate-600'
+            }`}>
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <h1 className="text-4xl font-black text-white uppercase">
+                  {action}
+                </h1>
+                {limit > 0 && action !== 'SKIP' && (
+                  <div className="text-2xl font-bold text-white">
+                    ₹{limit.toLocaleString()}
+                  </div>
+                )}
+              </div>
+              <div className="text-sm text-white/80 font-medium">
+                {action === 'SKIP' ? (
+                  <>{yourPrediction?.reasoning.find(r => r.includes('Cannot') || r.includes('Team is full') || r.includes('avoid'))?.replace(/^[🚫⚠️]+\s*/, '') || 'Constraint prevents bidding'}</>
+                ) : action === 'PUSH' && limit > 0 ? (
+                  <>⚠️ Stop at ₹{limit.toLocaleString()} - drain their budget</>
+                ) : action === 'BID' && limit > 0 ? (
+                  <>Walk away above ₹{limit.toLocaleString()}</>
+                ) : (
+                  <>{reason}</>
+                )}
+              </div>
+              {/* Show main reason if different from default action text */}
+              {reason && !reason.includes('Walk away') && !reason.includes('drain') && action !== 'WAIT' && action !== 'SKIP' && (
+                <div className="text-xs text-white/60 mt-1 truncate">
+                  {reason}
+                </div>
+              )}
+            </div>
+            
+            {/* Top Threats */}
+            {threats.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-white/70 uppercase tracking-wider">
+                    Top Threats
+                  </h4>
+                  {threats.length >= 2 && threats.every(t => t.likelihood >= 0.6) && (
+                    <span className="text-xs bg-red-500/30 text-red-300 px-2 py-0.5 rounded animate-pulse">
+                      ⚔️ Multi-team interest
+                    </span>
+                  )}
+                </div>
+                {threats.map((threat) => {
+                  const team = teams.find(t => t.id === threat.teamId);
+                  const likelihoodPercent = Math.round(threat.likelihood * 100);
+                  const isDesperate = threat.confidence === 'high' && likelihoodPercent >= 70;
+                  // Get the key reason (skip status line)
+                  const keyReason = threat.reasoning.find(r => !r.startsWith('📊')) || '';
+                  const isMustGet = keyReason.includes('MUST GET');
+
+                  return (
+                    <div
+                      key={threat.teamId}
+                      className={`glass rounded-xl p-4 border min-h-[72px] ${isMustGet ? 'border-red-500/50 bg-red-500/10' : 'border-white/10'}`}
+                      style={{ borderLeftColor: team?.color, borderLeftWidth: '4px' }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-4 h-4 rounded-full"
+                            style={{ backgroundColor: team?.color }}
+                          />
+                          <span className="font-bold text-white text-base">{threat.teamName.split(' ')[1]}</span>
+                          <span className={`text-base font-bold ${likelihoodPercent >= 80 ? 'text-red-400' : likelihoodPercent >= 60 ? 'text-orange-400' : 'text-white'}`}>
+                            {likelihoodPercent}%
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          {isMustGet && (
+                            <span className="text-xs bg-red-500/40 text-red-200 px-2 py-1 rounded font-semibold">
+                              MUST GET
+                            </span>
+                          )}
+                          {!isMustGet && isDesperate && (
+                            <span className="text-xs bg-orange-500/30 text-orange-300 px-2 py-1 rounded">
+                              Desperate
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Show key reason on mobile - with better formatting */}
+                      <div className="flex items-center justify-between">
+                        {keyReason && (
+                          <div className="text-sm text-white/70 truncate flex-1">
+                            {keyReason.replace(/^[🏆⚠️📊🔥💰⏰]+\s*/, '')}
+                          </div>
+                        )}
+                        {/* Show max bid for context */}
+                        <div className="text-sm text-white/50 ml-2 whitespace-nowrap">
+                          Max ₹{threat.maxBid.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="glass rounded-xl p-4 text-center border border-white/10">
+                <p className="text-white/60 text-sm">No strong competition</p>
+              </div>
+            )}
+          </>
+        );
+      })()}
       
+      {/* Detailed Mode View */}
+      {!simpleMode && (
+        <>
+          {/* Scarcity Alerts */}
+          {analysis.scarcityAlerts.length > 0 && (
+            <div className="glass rounded-xl p-4 bg-amber-500/10 border border-amber-500/30">
+              <h3 className="text-sm font-semibold text-amber-300 mb-2">⚠️ Scarcity Alerts</h3>
+              <ul className="space-y-1">
+                {analysis.scarcityAlerts.map((alert, i) => (
+                  <li key={i} className="text-sm text-amber-200">{alert}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+
       {/* Strategic Bidding Recommendation */}
       {currentPlayer && analysis.strategicRecommendation && (
         <div className={`glass rounded-2xl p-6 border-2 ${
@@ -328,32 +657,6 @@ export default function IntelligencePanel({
             {currentPlayer.availability === 'tentative' && (
               <span className="text-xs bg-yellow-500/30 text-yellow-300 px-2 py-1 rounded">⚠️ Tentative</span>
             )}
-          </div>
-          
-          {/* Current Bid Price Input (for LIVE auctions) */}
-          <div className="mb-4 p-3 bg-white/5 rounded-lg">
-            <label className="text-xs text-white/50 block mb-1">Current Bid Price (optional)</label>
-            <div className="flex items-center gap-2">
-              <span className="text-white">₹</span>
-              <input
-                type="number"
-                value={currentBidPrice || ''}
-                onChange={(e) => setCurrentBidPrice(e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="Enter current bid"
-                className="flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              {currentBidPrice && (
-                <button
-                  onClick={() => setCurrentBidPrice(undefined)}
-                  className="text-xs text-red-400 hover:text-red-300 px-2"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-            <p className="text-xs text-white/40 mt-1">
-              Enter current bid to get more accurate predictions
-            </p>
           </div>
           
           {/* Your Team Prediction */}
@@ -476,8 +779,16 @@ export default function IntelligencePanel({
         </div>
       )}
       
-      {/* Team Budget & Constraints */}
-      <div className="glass rounded-2xl p-6">
+      {simpleMode && !currentPlayer && (
+        <div className="glass rounded-xl p-6 text-center border border-white/10">
+          <p className="text-white/60">No player up</p>
+          <p className="text-white/40 text-sm mt-2">Switch to Detailed mode for full analysis</p>
+        </div>
+      )}
+      
+      {/* Team Budget & Constraints - Only in Detailed Mode */}
+      {!simpleMode && (
+        <div className="glass rounded-2xl p-6">
         <h3 className="text-lg font-bold text-white mb-2">💰 Team Budget Constraints</h3>
         <p className="text-xs text-white/50 mb-4">
           Max Bid = Remaining Budget - (Players Needed × ₹1,000 base price). Teams must reserve enough for remaining picks.
@@ -543,9 +854,102 @@ export default function IntelligencePanel({
           })}
         </div>
       </div>
+      )}
 
-      {/* Team Gaps Analysis */}
-      <div className="glass rounded-2xl p-6">
+      {/* Super11 Club Constraint - Only in Detailed Mode */}
+      {!simpleMode && (
+        <div className="glass rounded-2xl p-6 border-2 border-yellow-500/30 bg-yellow-500/5">
+          <h3 className="text-lg font-bold text-white mb-2">🏆 Super11 Club Requirement</h3>
+          <p className="text-xs text-white/50 mb-4">
+            Each team needs 3 players from Super11 (1 from C/VC + 2 from auction). Teams must prioritize Super11 players.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teams.map(team => {
+              const clubGapsForTeam = analysis.clubGaps[team.id] || [];
+              const super11Gap = clubGapsForTeam.find(g => g.club === 'Super11');
+              const isComplete = super11Gap ? super11Gap.needed <= 0 : true;
+              const isCritical = super11Gap && super11Gap.urgency >= 80;
+              const isUrgent = super11Gap && super11Gap.urgency >= 50;
+
+              return (
+                <div
+                  key={team.id}
+                  className={`glass rounded-xl p-3 border ${
+                    isComplete ? 'border-green-500/30 bg-green-500/5' :
+                    isCritical ? 'border-red-500/30 bg-red-500/5' :
+                    isUrgent ? 'border-orange-500/30 bg-orange-500/5' :
+                    'border-white/10'
+                  }`}
+                  style={{ borderLeftColor: team.color, borderLeftWidth: '4px' }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-white text-sm">{team.name.split(' ')[1]}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      isComplete ? 'bg-green-500/20 text-green-300' :
+                      isCritical ? 'bg-red-500/20 text-red-300' :
+                      isUrgent ? 'bg-orange-500/20 text-orange-300' :
+                      'bg-white/10 text-white/60'
+                    }`}>
+                      {super11Gap?.current || 0}/3 Super11
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Have:</span>
+                      <span className="text-white font-mono">{super11Gap?.current || 0} Super11</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Need:</span>
+                      <span className={`font-mono ${
+                        (super11Gap?.needed || 0) > 0 ? 'text-yellow-400' : 'text-green-400'
+                      }`}>
+                        {super11Gap?.needed || 0} more
+                      </span>
+                    </div>
+                    {!isComplete && (
+                      <div className="flex justify-between">
+                        <span className="text-white/50">Urgency:</span>
+                        <span className={`font-mono font-bold ${
+                          isCritical ? 'text-red-400' :
+                          isUrgent ? 'text-orange-400' :
+                          'text-yellow-400'
+                        }`}>
+                          {super11Gap?.urgency || 0}%
+                        </span>
+                      </div>
+                    )}
+                    {isComplete && (
+                      <div className="text-center text-green-400 font-semibold mt-1">
+                        ✓ Super11 Complete
+                      </div>
+                    )}
+                    {isCritical && !isComplete && (
+                      <div className="text-center text-red-300 font-semibold mt-1 text-xs">
+                        ⚠️ Must get Super11!
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pool Status */}
+          <div className="mt-4 p-3 bg-white/5 rounded-lg">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-white/70">Super11 players remaining in pool:</span>
+              <span className="text-yellow-400 font-bold">
+                {remainingPlayers.filter(p => p.club === 'Super11').length}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Gaps Analysis - Only in Detailed Mode */}
+      {!simpleMode && (
+        <div className="glass rounded-2xl p-6">
         <h3 className="text-lg font-bold text-white mb-4">📊 Team Role Coverage</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {teams.map(team => {
@@ -611,9 +1015,11 @@ export default function IntelligencePanel({
           })}
         </div>
       </div>
+      )}
       
-      {/* Preferences Editor */}
-      <div className="glass rounded-2xl p-6 border-2 border-purple-500/30">
+      {/* Preferences Editor - Only in Detailed Mode */}
+      {!simpleMode && (
+        <div className="glass rounded-2xl p-6 border-2 border-purple-500/30">
         <h3 className="text-lg font-bold text-white mb-4">⚙️ Team Preferences (Your Knowledge)</h3>
         <p className="text-sm text-white/60 mb-4">
           Add captain preferences, player chemistry, and behavior notes. This is YOUR knowledge, not system knowledge.
@@ -764,9 +1170,11 @@ export default function IntelligencePanel({
           })}
         </div>
       </div>
+      )}
       
-      {/* Info Box */}
-      <div className="glass rounded-xl p-4 bg-blue-500/10 border border-blue-500/30">
+      {/* Info Box - Only in Detailed Mode */}
+      {!simpleMode && (
+        <div className="glass rounded-xl p-4 bg-blue-500/10 border border-blue-500/30">
         <p className="text-xs text-blue-200">
           <strong>How it works:</strong> This panel analyzes public auction data only. It doesn't peek at upcoming players or use unfair system knowledge. 
           Add your own knowledge (preferences, chemistry) to improve predictions. Predictions are based on role gaps, budget constraints, scarcity, and learned behavior patterns.
@@ -774,6 +1182,7 @@ export default function IntelligencePanel({
           <strong>BidIntentScore:</strong> Not a calibrated probability, but a relative score (0-100%) indicating how likely a team is to bid, based on need, budget, scarcity, and preferences.
         </p>
       </div>
+      )}
     </div>
   );
 }
