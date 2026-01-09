@@ -183,7 +183,7 @@ export default function AuctionStatus({ status, currentPlayer, soldToTeam }: Auc
               </div>
             )}
             <div className="absolute -bottom-3 -right-3 w-10 h-10 md:w-14 md:h-14 rounded-full bg-amber-500 flex items-center justify-center font-bold text-black border-4 border-white shadow-lg">
-              {currentPlayer.category === 'APLUS' ? 'A+' : currentPlayer.category === 'BASE' ? 'B' : 'C'}
+              {currentPlayer.category === 'APLUS' ? '⭐' : currentPlayer.category === 'BASE' ? 'B' : 'C'}
             </div>
           </div>
 

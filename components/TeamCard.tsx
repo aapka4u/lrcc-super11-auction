@@ -35,7 +35,7 @@ function PlayerBadge({ player }: { player: Player }) {
       <span className="text-sm text-white truncate font-medium">{player.name}</span>
       {player.category === 'APLUS' && (
         <span className="text-[10px] bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded font-medium">
-          A+
+          ⭐
         </span>
       )}
     </div>

@@ -118,7 +118,7 @@ function MysteryPreview({ remainingByRole, remainingAplusCount, totalRemaining }
         ))}
         {remainingAplusCount > 0 && (
           <span className="bg-amber-500/20 px-2 py-1 rounded-md text-amber-300 border border-amber-500/30 font-semibold">
-            ⭐ {remainingAplusCount} A+ remaining
+            ⭐ {remainingAplusCount} Star remaining
           </span>
         )}
       </div>
