@@ -116,6 +116,73 @@ interface TeamWithBudget extends Team {
   maxBid: number;
 }
 
+// Unsold Player Card Component with team selection
+function UnsoldPlayerCard({
+  player,
+  teams,
+  usedJokers,
+  loading,
+  canAuction,
+  onJokerRequest,
+}: {
+  player: Player;
+  teams: TeamWithBudget[];
+  usedJokers: Record<string, string>;
+  loading: boolean;
+  canAuction: boolean;
+  onJokerRequest: (playerId: string, teamId: string) => void;
+}) {
+  const [selectedTeam, setSelectedTeam] = useState('');
+  const availableTeams = teams.filter(t => !usedJokers[t.id]);
+
+  return (
+    <div className="bg-white/5 rounded-lg p-3 border border-amber-500/20 flex flex-col justify-between gap-2">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{getRoleIcon(player.role)}</span>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-white truncate">{player.name}</div>
+            <div className="text-xs text-white/50">{player.role || 'Player'}</div>
+          </div>
+          {player.category === 'APLUS' && (
+            <span className="text-xs bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded">⭐</span>
+          )}
+        </div>
+        <div className="text-xs text-white/40 mt-1">{player.club}</div>
+      </div>
+
+      {/* Joker with team selection */}
+      {canAuction && (
+        <div className="space-y-1 mt-1">
+          <select
+            value={selectedTeam}
+            onChange={(e) => setSelectedTeam(e.target.value)}
+            className="w-full text-xs px-2 py-1.5 rounded-lg bg-white/10 border border-purple-500/30 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+          >
+            <option value="" className="bg-slate-800">-- Team --</option>
+            {availableTeams.map(t => (
+              <option key={t.id} value={t.id} className="bg-slate-800">
+                {t.name.split(' ')[1]}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              if (selectedTeam) {
+                onJokerRequest(player.id, selectedTeam);
+              }
+            }}
+            disabled={loading || !selectedTeam}
+            className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/40 disabled:bg-gray-600/20 disabled:cursor-not-allowed text-purple-300 border border-purple-600/30 py-2 rounded-lg font-semibold transition-colors"
+          >
+            🎴 Play Joker
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AdminState {
   status: AuctionStatus;
   currentPlayer: Player | null;
@@ -127,6 +194,8 @@ interface AdminState {
   soldPrices: Record<string, number>;
   unsoldPlayers?: string[];
   jokerPlayerId?: string | null;
+  jokerRequestingTeamId?: string | null;
+  usedJokers?: Record<string, string>; // teamId -> playerId
 }
 
 export default function AdminPage() {
@@ -156,6 +225,7 @@ export default function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [teamsExpanded, setTeamsExpanded] = useState(false);
   const [showJokerSelector, setShowJokerSelector] = useState(false);
+  const [selectedJokerTeamId, setSelectedJokerTeamId] = useState('');
 
   // Modal states
   const [showResetModal, setShowResetModal] = useState(false);
@@ -329,14 +399,23 @@ export default function AdminPage() {
     }
   };
 
-  // Joker card handler (for current LIVE player)
-  const handleJokerCard = async () => {
-    await performAction('JOKER');
-    setMessage({ type: 'success', text: 'Joker card played! Team can claim at base price.' });
+  // Joker card handler (for current LIVE player) - requires team selection
+  const handleJokerCard = async (teamId: string) => {
+    if (!teamId) {
+      setMessage({ type: 'error', text: 'Please select a team for the joker' });
+      return;
+    }
+    const team = state?.teams.find(t => t.id === teamId);
+    await performAction('JOKER', { teamId });
+    setMessage({ type: 'success', text: `Joker activated for ${team?.name || 'team'}! They can claim at base price.` });
   };
 
-  // Joker card request handler (select player first, then start auction with joker)
-  const handleJokerRequest = async (playerId: string) => {
+  // Joker card request handler (select player AND team first, then start auction with joker)
+  const handleJokerRequest = async (playerId: string, teamId: string) => {
+    if (!teamId) {
+      setMessage({ type: 'error', text: 'Please select a team for the joker' });
+      return;
+    }
     setLoading(true);
     setMessage(null);
     try {
@@ -346,34 +425,35 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin, action: 'START_AUCTION', playerId }),
       });
-      
+
       if (!startRes.ok) {
         const error = await startRes.json();
         setMessage({ type: 'error', text: error.error || 'Failed to start auction' });
-        setLoading(false); // Fix: Reset loading state before returning
+        setLoading(false);
         setTimeout(() => setMessage(null), 3000);
         return;
       }
 
-      // Immediately set joker for this player
+      // Set joker for this player with team ID
       const jokerRes = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, action: 'JOKER' }),
+        body: JSON.stringify({ pin, action: 'JOKER', teamId }),
       });
 
+      const team = state?.teams.find(t => t.id === teamId);
       if (jokerRes.ok) {
-        setMessage({ type: 'success', text: 'Joker card activated! Team can claim at base price.' });
+        setMessage({ type: 'success', text: `Joker activated for ${team?.name || 'team'}! Normal bidding begins.` });
         setShowJokerSelector(false);
-        setSelectedPlayerId(''); // Clear selection
+        setSelectedPlayerId('');
+        setSelectedJokerTeamId('');
         await fetchState();
       } else {
         const error = await jokerRes.json();
-        // If joker fails but auction started, rollback by clearing current player
         setMessage({ type: 'error', text: error.error || 'Failed to activate joker. Auction started but joker not active.' });
-        await fetchState(); // Refresh to show current state
+        await fetchState();
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Network error' });
     } finally {
       setLoading(false);
@@ -657,8 +737,19 @@ export default function AdminPage() {
                   🎴 Joker Card Request
                 </h3>
                 <p className="text-xs text-white/50 mb-3">
-                  Team wants a specific player at base price
+                  Team calls for a specific player (normal bidding, team can claim at base price)
                 </p>
+                {/* Show teams that have used their joker */}
+                {state.usedJokers && Object.keys(state.usedJokers).length > 0 && (
+                  <div className="text-xs text-white/40 mb-2 p-2 bg-white/5 rounded-lg">
+                    <span className="font-semibold">Used jokers:</span>{' '}
+                    {Object.entries(state.usedJokers).map(([teamId, playerId]) => {
+                      const team = state.teams.find(t => t.id === teamId);
+                      const player = ALL_PLAYERS.find(p => p.id === playerId);
+                      return team ? `${team.name.split(' ')[1]} (${player?.name || 'player'})` : '';
+                    }).filter(Boolean).join(', ')}
+                  </div>
+                )}
                 {!showJokerSelector ? (
                   <button
                     onClick={() => setShowJokerSelector(true)}
@@ -669,6 +760,22 @@ export default function AdminPage() {
                   </button>
                 ) : (
                   <div className="space-y-2">
+                    {/* Team selector */}
+                    <select
+                      value={selectedJokerTeamId}
+                      onChange={(e) => setSelectedJokerTeamId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-white/10 border border-purple-500/30 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="" className="bg-slate-800">-- Select team using joker --</option>
+                      {state.teams
+                        .filter(t => !state.usedJokers?.[t.id]) // Filter out teams that used joker
+                        .map(t => (
+                          <option key={t.id} value={t.id} className="bg-slate-800">
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                    {/* Player selector */}
                     <select
                       value={selectedPlayerId}
                       onChange={(e) => setSelectedPlayerId(e.target.value)}
@@ -706,11 +813,11 @@ export default function AdminPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
-                          if (selectedPlayerId) {
-                            handleJokerRequest(selectedPlayerId);
+                          if (selectedPlayerId && selectedJokerTeamId) {
+                            handleJokerRequest(selectedPlayerId, selectedJokerTeamId);
                           }
                         }}
-                        disabled={!selectedPlayerId || loading}
+                        disabled={!selectedPlayerId || !selectedJokerTeamId || loading}
                         className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-colors"
                       >
                         Start with Joker
@@ -718,7 +825,8 @@ export default function AdminPage() {
                       <button
                         onClick={() => {
                           setShowJokerSelector(false);
-                          setSelectedPlayerId(''); // Fix: Also clear selection on cancel
+                          setSelectedPlayerId('');
+                          setSelectedJokerTeamId('');
                         }}
                         className="px-3 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg transition-colors"
                       >
@@ -910,22 +1018,47 @@ export default function AdminPage() {
                         )}
                       </div>
 
-                      {/* Joker Card Button */}
+                      {/* Joker Card Button - only show if no joker active */}
                       {state.currentPlayer && state.jokerPlayerId !== state.currentPlayer.id && (
-                        <button
-                          onClick={handleJokerCard}
-                          disabled={loading}
-                          className="w-full bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-600/30 py-3 rounded-xl font-semibold transition-colors"
-                        >
-                          🎴 Play Joker Card (Base Price)
-                        </button>
+                        <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl space-y-2">
+                          <p className="text-xs text-purple-300 font-semibold">🎴 Activate Joker for this player</p>
+                          <div className="flex gap-2">
+                            <select
+                              value={selectedJokerTeamId}
+                              onChange={(e) => setSelectedJokerTeamId(e.target.value)}
+                              className="flex-1 px-3 py-2 rounded-lg bg-white/10 border border-purple-500/30 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            >
+                              <option value="" className="bg-slate-800">-- Team --</option>
+                              {state.teams
+                                .filter(t => !state.usedJokers?.[t.id])
+                                .map(t => (
+                                  <option key={t.id} value={t.id} className="bg-slate-800">
+                                    {t.name.split(' ')[1]}
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              onClick={() => handleJokerCard(selectedJokerTeamId)}
+                              disabled={loading || !selectedJokerTeamId}
+                              className="px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-colors"
+                            >
+                              🎴 Activate
+                            </button>
+                          </div>
+                          <p className="text-xs text-purple-300/60">Team can claim at base price if no one outbids</p>
+                        </div>
                       )}
 
                       {/* Joker Active Indicator */}
                       {state.currentPlayer && state.jokerPlayerId === state.currentPlayer.id && (
                         <div className="p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl text-center">
                           <p className="text-purple-300 font-semibold">🎴 Joker Card Active!</p>
-                          <p className="text-xs text-purple-300/80 mt-1">Team can claim at base price: ₹{state.currentPlayerBasePrice}</p>
+                          {state.jokerRequestingTeamId && (
+                            <p className="text-sm text-purple-200 mt-1">
+                              {state.teams.find(t => t.id === state.jokerRequestingTeamId)?.name} can claim at base price
+                            </p>
+                          )}
+                          <p className="text-xs text-purple-300/80 mt-1">Base price: ₹{state.currentPlayerBasePrice} • Normal bidding continues</p>
                         </div>
                       )}
 
@@ -934,20 +1067,24 @@ export default function AdminPage() {
                         {state.teams.map(team => {
                           const canAfford = soldPrice <= team.maxBid;
                           const isFull = team.playersNeeded <= 0;
-                          const isJoker = state.jokerPlayerId === state.currentPlayer?.id;
-                          const isDisabled = loading || (!isJoker && !canAfford) || isFull || isNaN(soldPrice) || soldPrice < state.currentPlayerBasePrice;
+                          const isJokerActive = state.jokerPlayerId === state.currentPlayer?.id;
+                          const isJokerTeam = isJokerActive && state.jokerRequestingTeamId === team.id;
+                          // Joker team can claim at base price, others need to afford the current bid
+                          const isDisabled = loading || isFull || isNaN(soldPrice) || soldPrice < state.currentPlayerBasePrice || (!isJokerTeam && !canAfford);
 
                           return (
                             <button
                               key={team.id}
-                              onClick={() => performAction('SOLD', { teamId: team.id, soldPrice: isJoker ? state.currentPlayerBasePrice : soldPrice })}
+                              onClick={() => performAction('SOLD', { teamId: team.id, soldPrice: isJokerTeam ? state.currentPlayerBasePrice : soldPrice })}
                               disabled={isDisabled}
                               className={`p-4 rounded-xl border-2 transition-all text-left ${
                                 isDisabled
                                   ? 'border-white/10 opacity-50 cursor-not-allowed'
-                                  : 'border-white/20 hover:border-white/40 hover:scale-105'
+                                  : isJokerTeam
+                                    ? 'border-purple-500/50 hover:border-purple-500 hover:scale-105'
+                                    : 'border-white/20 hover:border-white/40 hover:scale-105'
                               }`}
-                              style={{ backgroundColor: isDisabled ? 'transparent' : `${team.color}20` }}
+                              style={{ backgroundColor: isDisabled ? 'transparent' : isJokerTeam ? `${team.color}30` : `${team.color}20` }}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -958,7 +1095,10 @@ export default function AdminPage() {
                                     {team.name.split(' ')[1]?.[0]}
                                   </div>
                                   <div>
-                                    <div className="text-sm font-semibold text-white">{team.name}</div>
+                                    <div className="text-sm font-semibold text-white flex items-center gap-2">
+                                      {team.name}
+                                      {isJokerTeam && <span className="text-purple-300">🎴</span>}
+                                    </div>
                                     <div className="text-xs text-white/50">
                                       {TEAM_SIZE - team.playersNeeded}/{TEAM_SIZE} players
                                     </div>
@@ -976,11 +1116,11 @@ export default function AdminPage() {
                               {isFull && (
                                 <div className="text-xs text-red-400 mt-2">Team is full</div>
                               )}
-                              {!canAfford && !isFull && !isJoker && (
+                              {!canAfford && !isFull && !isJokerTeam && (
                                 <div className="text-xs text-red-400 mt-2">Cannot afford ₹{soldPrice}</div>
                               )}
-                              {isJoker && (
-                                <div className="text-xs text-purple-400 mt-2">🎴 Joker: Base price only</div>
+                              {isJokerTeam && (
+                                <div className="text-xs text-purple-400 mt-2">🎴 Joker: Claim at ₹{state.currentPlayerBasePrice}</div>
                               )}
                             </button>
                           );
@@ -1035,35 +1175,15 @@ export default function AdminPage() {
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {unsoldPlayers.map(player => (
-                        <div
+                        <UnsoldPlayerCard
                           key={player.id}
-                          className="bg-white/5 rounded-lg p-3 border border-amber-500/20 flex flex-col justify-between gap-2"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">{getRoleIcon(player.role)}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-white truncate">{player.name}</div>
-                                <div className="text-xs text-white/50">{player.role || 'Player'}</div>
-                              </div>
-                              {player.category === 'APLUS' && (
-                                <span className="text-xs bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded">⭐</span>
-                              )}
-                            </div>
-                            <div className="text-xs text-white/40 mt-1">{player.club}</div>
-                          </div>
-                          
-                          {/* Shortcut button */}
-                          {(state.status === 'IDLE' || state.status === 'SOLD') && (
-                            <button
-                              onClick={() => handleJokerRequest(player.id)}
-                              disabled={loading}
-                              className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-600/30 py-2 rounded-lg font-semibold transition-colors mt-1"
-                            >
-                              🎴 Play Joker
-                            </button>
-                          )}
-                        </div>
+                          player={player}
+                          teams={state.teams}
+                          usedJokers={state.usedJokers || {}}
+                          loading={loading}
+                          canAuction={state.status === 'IDLE' || state.status === 'SOLD'}
+                          onJokerRequest={handleJokerRequest}
+                        />
                       ))}
                     </div>
                     <p className="text-xs text-white/40 mt-4">

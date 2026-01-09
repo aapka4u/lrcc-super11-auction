@@ -40,6 +40,8 @@ export async function GET() {
     if (!auctionState.teamSpent) auctionState.teamSpent = Object.fromEntries(TEAMS.map(t => [t.id, 0]));
     if (!auctionState.unsoldPlayers) auctionState.unsoldPlayers = [];
     if (auctionState.jokerPlayerId === undefined) auctionState.jokerPlayerId = null;
+    if (!auctionState.usedJokers) auctionState.usedJokers = {};
+    if (auctionState.jokerRequestingTeamId === undefined) auctionState.jokerRequestingTeamId = null;
 
     // Count remaining players by category and role
     const remainingPlayers = PLAYERS.filter(p => !auctionState!.soldPlayers.includes(p.id));
@@ -113,6 +115,8 @@ export async function GET() {
       biddingDurations: auctionState.biddingDurations || {},
       unsoldPlayers: auctionState.unsoldPlayers || [],
       jokerPlayerId: auctionState.jokerPlayerId || null,
+      jokerRequestingTeamId: auctionState.jokerRequestingTeamId || null,
+      usedJokers: auctionState.usedJokers || {},
     });
   } catch (error) {
     console.error('Error fetching state:', error);
@@ -196,16 +200,15 @@ export async function POST(request: NextRequest) {
         const basePrice = BASE_PRICES[currentPlayer.category as keyof typeof BASE_PRICES] || BASE_PRICES.BASE;
         
         // CRITICAL: Validate base price (server-side enforcement)
-        const isJoker = state.jokerPlayerId === state.currentPlayerId;
-        if (isJoker) {
-          // Joker players must be sold at exactly base price
-          if (soldPrice !== basePrice) {
-            return NextResponse.json({
-              error: `Joker card requires base price of ₹${basePrice}, not ₹${soldPrice}`
-            }, { status: 400 });
-          }
+        const isJokerPlayer = state.jokerPlayerId === state.currentPlayerId;
+        const isJokerTeamClaiming = isJokerPlayer && state.jokerRequestingTeamId === teamId;
+
+        // Joker team can claim at base price, others must bid normally
+        if (isJokerTeamClaiming && soldPrice === basePrice) {
+          // Joker team claiming at base price - this uses their joker
+          // Validation passes - they get priority at base price
         } else {
-          // Non-joker players must be sold at or above base price
+          // Normal bidding - must be at or above base price
           if (soldPrice < basePrice) {
             return NextResponse.json({
               error: `Sold price ₹${soldPrice} is below base price ₹${basePrice} for ${currentPlayer.category} player`
@@ -225,9 +228,9 @@ export async function POST(request: NextRequest) {
 
         // Calculate max bid for this team
         const maxBidAllowed = calculateMaxBid(teamId, currentSpent, rosterSize, remainingAplusAfter, remainingBaseAfter);
-        
-        // Joker players bypass max bid check (already validated at base price)
-        if (!isJoker && soldPrice > maxBidAllowed) {
+
+        // Joker team claiming at base price bypasses max bid check
+        if (!(isJokerTeamClaiming && soldPrice === basePrice) && soldPrice > maxBidAllowed) {
           return NextResponse.json({
             error: `Bid of ₹${soldPrice} exceeds max allowed ₹${maxBidAllowed} for ${team.name}. They need to reserve budget for remaining players.`
           }, { status: 400 });
@@ -254,7 +257,16 @@ export async function POST(request: NextRequest) {
         state.soldPrices[state.currentPlayerId] = soldPrice;
         state.teamSpent[teamId] = currentSpent + soldPrice;
         state.auctionStartTime = undefined; // Reset for next auction
+
+        // Record joker usage ONLY if joker team claims at base price
+        // If someone else outbids them, the joker is NOT used
+        if (isJokerTeamClaiming && soldPrice === basePrice) {
+          if (!state.usedJokers) state.usedJokers = {};
+          state.usedJokers[teamId] = state.currentPlayerId;
+        }
         state.jokerPlayerId = null; // Clear joker after sale
+        state.jokerRequestingTeamId = null; // Clear requesting team
+
         // Remove from unsold list if was there
         const currentId = state.currentPlayerId;
         if (state.unsoldPlayers?.includes(currentId!) && currentId) {
@@ -263,7 +275,7 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'UNSOLD':
-        // Mark player as unsold (skip)
+        // Mark player as unsold (skip) - joker is NOT consumed
         if (state.currentPlayerId) {
           // Add to unsold players list
           if (!state.unsoldPlayers) state.unsoldPlayers = [];
@@ -274,7 +286,8 @@ export async function POST(request: NextRequest) {
           state.status = 'IDLE';
           state.currentPlayerId = null;
           state.soldToTeamId = null;
-          state.jokerPlayerId = null; // Clear joker if set
+          state.jokerPlayerId = null;
+          state.jokerRequestingTeamId = null;
         }
         break;
 
@@ -283,13 +296,26 @@ export async function POST(request: NextRequest) {
         state.status = 'IDLE';
         state.currentPlayerId = null;
         state.soldToTeamId = null;
-        state.jokerPlayerId = null; // Clear joker
+        state.jokerPlayerId = null;
+        state.jokerRequestingTeamId = null;
         break;
 
       case 'JOKER':
-        // Mark current player as joker (can be claimed at base price)
+        // Mark current player as joker for a specific team (can be claimed at base price)
+        if (!teamId) {
+          return NextResponse.json({ error: 'Team ID required for joker request' }, { status: 400 });
+        }
+        // Check if team has already used their joker
+        if (!state.usedJokers) state.usedJokers = {};
+        if (state.usedJokers[teamId]) {
+          const usedOnPlayer = findPlayer(state.usedJokers[teamId]);
+          return NextResponse.json({
+            error: `This team already used their joker on ${usedOnPlayer?.name || 'a player'}`
+          }, { status: 400 });
+        }
         if (state.currentPlayerId && state.status === 'LIVE') {
           state.jokerPlayerId = state.currentPlayerId;
+          state.jokerRequestingTeamId = teamId;
         }
         break;
 

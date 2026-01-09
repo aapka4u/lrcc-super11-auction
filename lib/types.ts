@@ -57,6 +57,8 @@ export interface AuctionState {
   // New features
   unsoldPlayers?: string[]; // Player IDs that were marked as unsold
   jokerPlayerId?: string | null; // Current joker player (can be claimed at base price)
+  jokerRequestingTeamId?: string | null; // Team that requested joker for current player
+  usedJokers?: Record<string, string>; // teamId -> playerId (which player they used joker on)
 }
 
 // Sale history for team stories
