@@ -46,15 +46,56 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
   const totalPlayers = 2 + team.roster.length; // Captain + VC + roster
 
   return (
-    <div 
+    <div
       className={`
-        glass rounded-2xl p-4 transition-all duration-500
-        ${isHighlighted 
-          ? 'ring-2 ring-green-400 shadow-lg shadow-green-400/20 scale-[1.02]' 
+        glass rounded-2xl p-4 transition-all duration-500 relative overflow-hidden
+        ${isHighlighted
+          ? 'scale-[1.05] z-10'
           : 'hover:bg-white/10'
         }
       `}
+      style={isHighlighted ? {
+        boxShadow: `0 0 40px ${team.color}60, 0 0 80px ${team.color}30`,
+        border: `2px solid ${team.color}`,
+      } : undefined}
     >
+      {/* Celebration shimmer effect when highlighted */}
+      {isHighlighted && (
+        <>
+          {/* Animated glow border */}
+          <div
+            className="absolute inset-0 rounded-2xl animate-pulse"
+            style={{
+              background: `linear-gradient(45deg, transparent, ${team.color}40, transparent)`,
+              animation: 'shimmer 2s ease-in-out infinite',
+            }}
+          />
+          {/* Corner sparkles */}
+          <div
+            className="absolute -top-1 -left-1 w-4 h-4 rounded-full animate-ping"
+            style={{ backgroundColor: team.color, opacity: 0.6 }}
+          />
+          <div
+            className="absolute -top-1 -right-1 w-4 h-4 rounded-full animate-ping"
+            style={{ backgroundColor: team.color, opacity: 0.6, animationDelay: '0.2s' }}
+          />
+          <div
+            className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full animate-ping"
+            style={{ backgroundColor: team.color, opacity: 0.6, animationDelay: '0.4s' }}
+          />
+          <div
+            className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full animate-ping"
+            style={{ backgroundColor: team.color, opacity: 0.6, animationDelay: '0.6s' }}
+          />
+          {/* Inner glow */}
+          <div
+            className="absolute inset-0 rounded-2xl pointer-events-none"
+            style={{
+              background: `radial-gradient(circle at center, ${team.color}20 0%, transparent 70%)`,
+            }}
+          />
+        </>
+      )}
       {/* Team Header */}
       <div className="flex items-center gap-3 mb-3">
         <div 
@@ -70,7 +111,10 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
           </p>
         </div>
         {isHighlighted && (
-          <div className="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">
+          <div
+            className="text-white text-xs font-bold px-2 py-1 rounded-full animate-bounce"
+            style={{ backgroundColor: team.color }}
+          >
             SOLD!
           </div>
         )}

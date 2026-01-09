@@ -12,18 +12,23 @@ A real-time auction display board for cricket player auctions. Viewers on mobile
 ## Features
 
 - **Public Display** (`/`): Shows live auction status, team rosters building up
+- **Broadcast Mode** (`/broadcast`): Full-screen display for big screens/projectors
 - **Admin Console** (`/admin`): PIN-protected control panel with two tabs:
-  - **Auction Control**: Start bidding, mark players sold, assign to teams
-  - **Player Profiles**: Upload player images, add CricHeroes profile links
+  - **Auction Control**: Start bidding, enter sold price, assign to teams
+  - **Player Profiles**: Upload player images (max 1MB), add CricHeroes profile links
+- **Budget Tracking**:
+  - Real-time budget display for each team
+  - Max bid calculation (ensures teams can afford remaining picks)
+  - Sold prices tracked and displayed in admin
 - **Players Page** (`/players`): Browse all 48 players with filtering and search
 - **Player Roles**: Visual role indicators with icons:
   - 🏏 Batsman
   - 🎯 Bowler
   - ⚡ All-rounder
   - 🧤 WK-Batsman
+- **Pause/Resume**: Admin can pause auction with custom message and duration
 - **Auto-refresh**: Updates every 2 seconds
 - **Mobile-friendly**: Works on all devices
-- **No prices shown**: Only player names and team assignments visible publicly
 
 ## Quick Deploy (30 minutes)
 
@@ -69,10 +74,17 @@ git push -u origin main
 2. Enter PIN: `2237`
 3. **Select player** from dropdown → Click "Start Auction"
 4. Viewers now see "🔴 LIVE: [Player Name]"
-5. When sold → Click the winning team button
-6. Viewers see "✅ SOLD: [Player] → Team X"
-7. Click "Continue to Next Player"
-8. Repeat!
+5. **Enter the sold price** in the input field
+6. **Select the winning team** (teams that can't afford the price are disabled)
+7. Viewers see "✅ SOLD: [Player] → Team X"
+8. Click "Continue to Next Player"
+9. Repeat!
+
+### Budget Rules:
+- Each team must have 8 players total (Captain + Vice-Captain + 6 auction picks)
+- A+ players have base price ₹2,500, Base players ₹1,000
+- Teams cannot bid more than their "max bid" (calculated to ensure they can buy remaining players)
+- Admin sees max bid and remaining budget for each team in real-time
 
 ### For Viewers (the 36 players):
 
@@ -126,29 +138,34 @@ All player and team data is pre-configured:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/state` | GET | Get current auction state |
-| `/api/auction` | POST | Update auction state (admin) |
-| `/api/players` | GET | Get all players with profiles |
+| `/api/state` | GET | Get current auction state (teams, budgets, rosters) |
+| `/api/state` | POST | Update auction state (admin actions: START, SOLD, UNSOLD, PAUSE, RESET) |
+| `/api/players` | GET | Get all players with profile data (images, CricHeroes links) |
 | `/api/players` | POST | Update player profile (admin) |
-| `/api/players` | DELETE | Remove player profile data (admin) |
+| `/api/players` | DELETE | Remove player profile field (admin) |
+| `/health` | GET | Health check endpoint |
 
 ## Project Structure
 
 ```
 app/
-├── page.tsx           # Public auction display
-├── admin/page.tsx     # Admin control panel
-├── players/page.tsx   # All players list
-├── api/
-│   ├── state/route.ts    # Auction state API
-│   ├── auction/route.ts  # Auction control API
-│   └── players/route.ts  # Player profiles API
+├── page.tsx              # Public auction display
+├── layout.tsx            # Root layout with metadata
+├── admin/page.tsx        # Admin control panel
+├── broadcast/page.tsx    # Full-screen broadcast display
+├── players/page.tsx      # All players list
+├── health/page.tsx       # Health check endpoint
+└── api/
+    ├── state/route.ts    # Auction state API (GET/POST)
+    └── players/route.ts  # Player profiles API
+
 components/
-├── AuctionStatus.tsx  # Live auction status display
-└── TeamCard.tsx       # Team roster card
+├── AuctionStatus.tsx     # Live auction status display
+└── TeamCard.tsx          # Team roster card with budgets
+
 lib/
-├── data.ts            # Player & team data
-└── types.ts           # TypeScript interfaces
+├── data.ts               # Player & team data, calculateMaxBid()
+└── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
 ```
 
 ## Local Development

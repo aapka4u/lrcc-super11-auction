@@ -1,4 +1,4 @@
-import { Team, Player } from './types';
+import { Team, Player, TEAM_SIZE, BASE_PRICES } from './types';
 
 export const TEAMS: Team[] = [
   {
@@ -132,10 +132,37 @@ export const getInitialState = () => ({
   soldToTeamId: null,
   rosters: Object.fromEntries(TEAMS.map(t => [t.id, []])),
   soldPlayers: [],
+  soldPrices: {} as Record<string, number>,
+  teamSpent: Object.fromEntries(TEAMS.map(t => [t.id, 0])),
   lastUpdate: Date.now(),
   pauseMessage: undefined,
   pauseUntil: undefined,
 });
+
+// Calculate max bid a team can make
+// Formula: remaining budget - (players still needed * base price for remaining players)
+export const calculateMaxBid = (
+  teamId: string,
+  teamSpent: number,
+  rosterSize: number, // Current roster size (excluding C and VC)
+  remainingAplusCount: number, // A+ players still in pool
+  remainingBaseCount: number // Base players still in pool
+): number => {
+  const team = TEAMS.find(t => t.id === teamId);
+  if (!team) return 0;
+
+  const remainingBudget = team.budget - teamSpent;
+  const playersStillNeeded = (TEAM_SIZE - 2) - rosterSize; // -2 for C and VC
+
+  if (playersStillNeeded <= 0) return 0; // Team is full
+
+  // Reserve minimum for remaining players at base price
+  // Worst case: all remaining picks are base players at 1000
+  const reserveForFuturePlayers = (playersStillNeeded - 1) * BASE_PRICES.BASE;
+
+  const maxBid = remainingBudget - reserveForFuturePlayers;
+  return Math.max(0, maxBid);
+};
 
 export const getPlayerById = (id: string): Player | undefined => 
   PLAYERS.find(p => p.id === id);

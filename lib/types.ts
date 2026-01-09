@@ -29,15 +29,40 @@ export interface PlayerProfile {
 
 export type AuctionStatus = 'IDLE' | 'LIVE' | 'SOLD' | 'PAUSED';
 
+// Base prices for player categories
+export const BASE_PRICES = {
+  APLUS: 2500,
+  BASE: 1000,
+  CAPTAIN: 0, // Already assigned
+  VICE_CAPTAIN: 0, // Already assigned
+} as const;
+
+// Total players each team needs (including C and VC)
+export const TEAM_SIZE = 8;
+
 export interface AuctionState {
   status: AuctionStatus;
   currentPlayerId: string | null;
   soldToTeamId: string | null;
   rosters: Record<string, string[]>; // teamId -> playerIds
   soldPlayers: string[]; // playerIds that have been sold
+  soldPrices: Record<string, number>; // playerId -> sold price
+  teamSpent: Record<string, number>; // teamId -> total spent
   lastUpdate: number;
   pauseMessage?: string; // Custom message when paused
   pauseUntil?: number; // Timestamp when auction resumes
+  // Bidding tracking for story generation
+  auctionStartTime?: number; // When current player went LIVE
+  biddingDurations?: Record<string, number>; // playerId -> seconds it took to sell
+}
+
+// Sale history for team stories
+export interface SaleRecord {
+  playerId: string;
+  teamId: string;
+  price: number;
+  duration: number; // seconds
+  timestamp: number;
 }
 
 export interface PublicState {

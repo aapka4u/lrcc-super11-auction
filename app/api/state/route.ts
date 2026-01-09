@@ -1,7 +1,7 @@
 import { kv } from '@vercel/kv';
 import { NextRequest, NextResponse } from 'next/server';
-import { AuctionState, Player, PlayerProfile } from '@/lib/types';
-import { getInitialState, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById } from '@/lib/data';
+import { AuctionState, Player, PlayerProfile, BASE_PRICES, TEAM_SIZE } from '@/lib/types';
+import { getInitialState, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById, calculateMaxBid } from '@/lib/data';
 
 const STATE_KEY = 'auction:state';
 const PROFILES_KEY = 'player:profiles';
@@ -35,20 +35,49 @@ export async function GET() {
 
     const playerProfiles = profiles || {};
 
+    // Ensure state has budget tracking fields (for backward compatibility)
+    if (!auctionState.soldPrices) auctionState.soldPrices = {};
+    if (!auctionState.teamSpent) auctionState.teamSpent = Object.fromEntries(TEAMS.map(t => [t.id, 0]));
+
+    // Count remaining players by category and role
+    const remainingPlayers = PLAYERS.filter(p => !auctionState!.soldPlayers.includes(p.id));
+    const remainingAplusCount = remainingPlayers.filter(p => p.category === 'APLUS').length;
+    const remainingBaseCount = remainingPlayers.filter(p => p.category === 'BASE').length;
+
+    // Count remaining players by role for mystery preview
+    const remainingByRole = {
+      Batsman: remainingPlayers.filter(p => p.role === 'Batsman').length,
+      Bowler: remainingPlayers.filter(p => p.role === 'Bowler').length,
+      'All-rounder': remainingPlayers.filter(p => p.role === 'All-rounder').length,
+      'WK-Batsman': remainingPlayers.filter(p => p.role === 'WK-Batsman').length,
+    };
+
     // Build public response with team rosters and captain/VC player objects
     const teamsWithRosters = TEAMS.map(team => {
       // Find captain and VC player objects
       const captainPlayer = TEAM_LEADERS.find(p => p.teamId === team.id && p.category === 'CAPTAIN');
       const viceCaptainPlayer = TEAM_LEADERS.find(p => p.teamId === team.id && p.category === 'VICE_CAPTAIN');
 
+      const rosterPlayerIds = auctionState!.rosters[team.id] || [];
+      const roster = rosterPlayerIds
+        .map(playerId => findPlayer(playerId))
+        .filter((p): p is Player => p !== undefined)
+        .map(p => mergeProfile(p, playerProfiles));
+
+      const spent = auctionState!.teamSpent[team.id] || 0;
+      const remainingBudget = team.budget - spent;
+      const playersNeeded = (TEAM_SIZE - 2) - roster.length; // -2 for C and VC
+      const maxBid = calculateMaxBid(team.id, spent, roster.length, remainingAplusCount, remainingBaseCount);
+
       return {
         ...team,
         captainPlayer: captainPlayer ? mergeProfile(captainPlayer, playerProfiles) : undefined,
         viceCaptainPlayer: viceCaptainPlayer ? mergeProfile(viceCaptainPlayer, playerProfiles) : undefined,
-        roster: (auctionState!.rosters[team.id] || [])
-          .map(playerId => findPlayer(playerId))
-          .filter((p): p is Player => p !== undefined)
-          .map(p => mergeProfile(p, playerProfiles)),
+        roster,
+        spent,
+        remainingBudget,
+        playersNeeded,
+        maxBid,
       };
     });
 
@@ -60,9 +89,15 @@ export async function GET() {
       ? getTeamById(auctionState.soldToTeamId)
       : null;
 
+    // Get base price for current player
+    const currentPlayerBasePrice = currentPlayer
+      ? BASE_PRICES[currentPlayer.category as keyof typeof BASE_PRICES] || BASE_PRICES.BASE
+      : 0;
+
     return NextResponse.json({
       status: auctionState.status,
       currentPlayer: currentPlayer ? mergeProfile(currentPlayer, playerProfiles) : null,
+      currentPlayerBasePrice,
       soldToTeam,
       teams: teamsWithRosters,
       lastUpdate: auctionState.lastUpdate,
@@ -70,6 +105,10 @@ export async function GET() {
       totalPlayers: PLAYERS.length,
       pauseMessage: auctionState.pauseMessage,
       pauseUntil: auctionState.pauseUntil,
+      soldPrices: auctionState.soldPrices,
+      remainingByRole,
+      remainingAplusCount,
+      biddingDurations: auctionState.biddingDurations || {},
     });
   } catch (error) {
     console.error('Error fetching state:', error);
@@ -81,7 +120,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { pin, action, playerId, teamId, confirmReset, pauseMessage, pauseMinutes } = body;
+    const { pin, action, playerId, teamId, confirmReset, pauseMessage, pauseMinutes, soldPrice } = body;
 
     // Verify admin PIN
     if (!ADMIN_PIN || pin !== ADMIN_PIN) {
@@ -106,6 +145,7 @@ export async function POST(request: NextRequest) {
         state.status = 'LIVE';
         state.currentPlayerId = playerId;
         state.soldToTeamId = null;
+        state.auctionStartTime = Date.now(); // Track when bidding started
         break;
 
       case 'SOLD':
@@ -113,16 +153,66 @@ export async function POST(request: NextRequest) {
         if (!teamId || !state.currentPlayerId) {
           return NextResponse.json({ error: 'Team ID required' }, { status: 400 });
         }
+        if (typeof soldPrice !== 'number' || soldPrice < 0) {
+          return NextResponse.json({ error: 'Valid sold price required' }, { status: 400 });
+        }
         // CRITICAL: Check if already sold
         if (state.soldPlayers.includes(state.currentPlayerId)) {
-          return NextResponse.json({ 
-            error: 'This player was already sold. Please select a different player.' 
+          return NextResponse.json({
+            error: 'This player was already sold. Please select a different player.'
           }, { status: 400 });
         }
+
+        // Ensure budget tracking exists
+        if (!state.soldPrices) state.soldPrices = {};
+        if (!state.teamSpent) state.teamSpent = Object.fromEntries(TEAMS.map(t => [t.id, 0]));
+
+        // Check team hasn't exceeded budget
+        const team = TEAMS.find(t => t.id === teamId);
+        if (!team) {
+          return NextResponse.json({ error: 'Team not found' }, { status: 400 });
+        }
+
+        const currentSpent = state.teamSpent[teamId] || 0;
+        const rosterSize = (state.rosters[teamId] || []).length;
+
+        // Count remaining players (excluding current)
+        const remainingAfterSale = PLAYERS.filter(p =>
+          !state!.soldPlayers.includes(p.id) && p.id !== state!.currentPlayerId
+        );
+        const remainingAplusAfter = remainingAfterSale.filter(p => p.category === 'APLUS').length;
+        const remainingBaseAfter = remainingAfterSale.filter(p => p.category === 'BASE').length;
+
+        // Calculate max bid for this team
+        const maxBidAllowed = calculateMaxBid(teamId, currentSpent, rosterSize, remainingAplusAfter, remainingBaseAfter);
+
+        if (soldPrice > maxBidAllowed) {
+          return NextResponse.json({
+            error: `Bid of ₹${soldPrice} exceeds max allowed ₹${maxBidAllowed} for ${team.name}. They need to reserve budget for remaining players.`
+          }, { status: 400 });
+        }
+
+        // Check team roster isn't full
+        if (rosterSize >= (TEAM_SIZE - 2)) {
+          return NextResponse.json({
+            error: `${team.name} roster is full (${TEAM_SIZE} players including C & VC)`
+          }, { status: 400 });
+        }
+
+        // Calculate bidding duration
+        if (!state.biddingDurations) state.biddingDurations = {};
+        const biddingDuration = state.auctionStartTime
+          ? Math.floor((Date.now() - state.auctionStartTime) / 1000)
+          : 0;
+        state.biddingDurations[state.currentPlayerId] = biddingDuration;
+
         state.status = 'SOLD';
         state.soldToTeamId = teamId;
         state.rosters[teamId] = [...(state.rosters[teamId] || []), state.currentPlayerId];
         state.soldPlayers = [...state.soldPlayers, state.currentPlayerId];
+        state.soldPrices[state.currentPlayerId] = soldPrice;
+        state.teamSpent[teamId] = currentSpent + soldPrice;
+        state.auctionStartTime = undefined; // Reset for next auction
         break;
 
       case 'UNSOLD':

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { TEAMS, PLAYERS, ALL_PLAYERS } from '@/lib/data';
-import { Team, Player, AuctionStatus, PlayerProfile } from '@/lib/types';
+import { Team, Player, AuctionStatus, PlayerProfile, BASE_PRICES, TEAM_SIZE } from '@/lib/types';
 
 function getRoleIcon(role?: string): string {
   switch (role) {
@@ -19,13 +19,23 @@ function getInitials(name: string): string {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
+interface TeamWithBudget extends Team {
+  roster: Player[];
+  spent: number;
+  remainingBudget: number;
+  playersNeeded: number;
+  maxBid: number;
+}
+
 interface AdminState {
   status: AuctionStatus;
   currentPlayer: Player | null;
+  currentPlayerBasePrice: number;
   soldToTeam: Team | null;
-  teams: (Team & { roster: Player[] })[];
+  teams: TeamWithBudget[];
   soldCount: number;
   totalPlayers: number;
+  soldPrices: Record<string, number>;
 }
 
 export default function AdminPage() {
@@ -47,6 +57,7 @@ export default function AdminPage() {
   const [profileSearch, setProfileSearch] = useState('');
   const [pauseMessage, setPauseMessage] = useState('');
   const [pauseMinutes, setPauseMinutes] = useState<number | undefined>(undefined);
+  const [soldPrice, setSoldPrice] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchState = useCallback(async () => {
@@ -90,6 +101,13 @@ export default function AdminPage() {
       setPauseMinutes(undefined);
     }
   }, [state?.status]);
+
+  // Set sold price to base price when player goes LIVE
+  useEffect(() => {
+    if (state?.status === 'LIVE' && state.currentPlayerBasePrice) {
+      setSoldPrice(state.currentPlayerBasePrice);
+    }
+  }, [state?.status, state?.currentPlayerBasePrice]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -504,29 +522,84 @@ export default function AdminPage() {
         {state.status === 'LIVE' && (
           <section className="glass rounded-2xl p-4">
             <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
-              2️⃣ Sold To Which Team?
+              2️⃣ Enter Sold Price & Select Team
             </h2>
-            
-            <div className="grid grid-cols-2 gap-3">
-              {TEAMS.map(team => (
-                <button
-                  key={team.id}
-                  onClick={() => performAction('SOLD', { teamId: team.id })}
-                  disabled={loading}
-                  className="p-4 rounded-xl border-2 border-white/20 hover:border-white/40 transition-all text-left"
-                  style={{ backgroundColor: `${team.color}20` }}
-                >
-                  <div 
-                    className="w-8 h-8 rounded-full mb-2 flex items-center justify-center text-white font-bold"
-                    style={{ backgroundColor: team.color }}
-                  >
-                    {team.name.split(' ')[1]?.[0]}
-                  </div>
-                  <div className="text-sm font-semibold text-white truncate">{team.name}</div>
-                </button>
-              ))}
+
+            {/* Price Input */}
+            <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+              <label className="text-sm text-amber-300 font-semibold mb-2 block">
+                Sold Price (Base: ₹{state.currentPlayerBasePrice})
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl text-white">₹</span>
+                <input
+                  type="number"
+                  value={soldPrice}
+                  onChange={(e) => setSoldPrice(Number(e.target.value))}
+                  min={state.currentPlayerBasePrice}
+                  step={100}
+                  className="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              {soldPrice < state.currentPlayerBasePrice && (
+                <p className="text-red-400 text-sm mt-2">Price must be at least ₹{state.currentPlayerBasePrice}</p>
+              )}
             </div>
-            
+
+            {/* Team Selection with Budget Info */}
+            <div className="grid grid-cols-1 gap-3">
+              {state.teams.map(team => {
+                const canAfford = soldPrice <= team.maxBid;
+                const isFull = team.playersNeeded <= 0;
+                const isDisabled = loading || !canAfford || isFull || soldPrice < state.currentPlayerBasePrice;
+
+                return (
+                  <button
+                    key={team.id}
+                    onClick={() => performAction('SOLD', { teamId: team.id, soldPrice })}
+                    disabled={isDisabled}
+                    className={`p-3 rounded-xl border-2 transition-all text-left ${
+                      isDisabled
+                        ? 'border-white/10 opacity-50 cursor-not-allowed'
+                        : 'border-white/20 hover:border-white/40'
+                    }`}
+                    style={{ backgroundColor: isDisabled ? 'transparent' : `${team.color}20` }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold"
+                          style={{ backgroundColor: team.color }}
+                        >
+                          {team.name.split(' ')[1]?.[0]}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-white">{team.name}</div>
+                          <div className="text-xs text-white/50">
+                            {TEAM_SIZE - team.playersNeeded}/{TEAM_SIZE} players
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-bold text-green-400">
+                          Max: ₹{team.maxBid.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-white/50">
+                          Budget: ₹{team.remainingBudget.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    {isFull && (
+                      <div className="text-xs text-red-400 mt-1">Team is full</div>
+                    )}
+                    {!canAfford && !isFull && (
+                      <div className="text-xs text-red-400 mt-1">Cannot afford ₹{soldPrice}</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               onClick={() => performAction('UNSOLD')}
               disabled={loading}
@@ -550,37 +623,65 @@ export default function AdminPage() {
           </section>
         )}
 
-        {/* Team Rosters */}
+        {/* Team Rosters with Budget */}
         <section className="glass rounded-2xl p-4">
           <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
-            Current Team Rosters
+            Team Rosters & Budgets
           </h2>
           <div className="space-y-3">
             {state.teams.map(team => (
               <div key={team.id} className="bg-white/5 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div 
-                    className="w-6 h-6 rounded-full"
-                    style={{ backgroundColor: team.color }}
-                  />
-                  <span className="font-semibold text-white">{team.name}</span>
-                  <span className="text-xs text-white/40">
-                    ({2 + team.roster.length} players)
-                  </span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-6 h-6 rounded-full"
+                      style={{ backgroundColor: team.color }}
+                    />
+                    <span className="font-semibold text-white">{team.name}</span>
+                    <span className="text-xs text-white/40">
+                      ({2 + team.roster.length}/{TEAM_SIZE})
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-green-400">
+                      ₹{team.remainingBudget.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-white/40">
+                      Spent: ₹{team.spent.toLocaleString()}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Budget Bar */}
+                <div className="h-2 bg-white/10 rounded-full mb-2 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-green-500 to-amber-500 transition-all"
+                    style={{ width: `${(team.spent / team.budget) * 100}%` }}
+                  />
+                </div>
+
                 <div className="text-sm text-white/60">
                   <span className="text-amber-400">C:</span> {team.captain} •
                   <span className="text-amber-400/70 ml-1">VC:</span> {team.viceCaptain}
                 </div>
                 {team.roster.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {team.roster.map(p => (
-                      <span key={p.id} className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
-                        {getRoleIcon(p.role)} {p.name}
-                      </span>
-                    ))}
+                    {team.roster.map(p => {
+                      const price = state.soldPrices?.[p.id];
+                      return (
+                        <span key={p.id} className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded flex items-center gap-1">
+                          {getRoleIcon(p.role)} {p.name}
+                          {price && <span className="text-green-400">₹{price}</span>}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
+                <div className="mt-2 text-xs text-white/40">
+                  Max bid: <span className="text-green-400 font-semibold">₹{team.maxBid.toLocaleString()}</span>
+                  {team.playersNeeded > 0 && ` • Need ${team.playersNeeded} more`}
+                  {team.playersNeeded <= 0 && <span className="text-amber-400"> • FULL</span>}
+                </div>
               </div>
             ))}
           </div>

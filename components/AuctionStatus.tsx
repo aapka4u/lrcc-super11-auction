@@ -1,11 +1,49 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
+import confetti from 'canvas-confetti';
 import { Player, Team, AuctionStatus as Status } from '@/lib/types';
 
 interface AuctionStatusProps {
   status: Status;
   currentPlayer: Player | null;
   soldToTeam: Team | null;
+}
+
+// Live auction timer component
+function LiveTimer({ isActive, playerId }: { isActive: boolean; playerId: string | null }) {
+  const [seconds, setSeconds] = useState(0);
+  const lastPlayerIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Reset timer when player changes or status changes
+    if (playerId !== lastPlayerIdRef.current) {
+      setSeconds(0);
+      lastPlayerIdRef.current = playerId;
+    }
+
+    if (!isActive) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setSeconds(s => s + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isActive, playerId]);
+
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+
+  return (
+    <div className="inline-flex items-center gap-2 bg-black/30 rounded-lg px-3 py-1.5 border border-white/10">
+      <span className="text-xs text-white/50 uppercase tracking-wider">On Block</span>
+      <span className="text-lg font-mono font-bold text-yellow-400 animate-pulse">
+        {minutes.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
+      </span>
+    </div>
+  );
 }
 
 function getInitials(name: string): string {
@@ -46,6 +84,29 @@ function getRoleDisplay(role?: string): { icon: string; label: string; color: st
 }
 
 export default function AuctionStatus({ status, currentPlayer, soldToTeam }: AuctionStatusProps) {
+  const lastSoldPlayerRef = useRef<string | null>(null);
+
+  // Trigger confetti when status changes to SOLD
+  useEffect(() => {
+    if (status === 'SOLD' && soldToTeam && currentPlayer) {
+      // Only fire once per sale (check player ID to avoid re-firing)
+      if (lastSoldPlayerRef.current !== currentPlayer.id) {
+        lastSoldPlayerRef.current = currentPlayer.id;
+
+        // Fire confetti from center of screen with team color
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { x: 0.5, y: 0.5 },
+          colors: [soldToTeam.color, '#ffffff', '#ffd700'],
+        });
+      }
+    } else if (status !== 'SOLD') {
+      // Reset ref when not in SOLD state so next sale can trigger
+      lastSoldPlayerRef.current = null;
+    }
+  }, [status, soldToTeam, currentPlayer]);
+
   // PAUSED state
   if (status === 'PAUSED') {
     return (
@@ -173,9 +234,12 @@ export default function AuctionStatus({ status, currentPlayer, soldToTeam }: Auc
       <div className="absolute inset-0 animate-shimmer opacity-20 bg-gradient-to-br from-yellow-500/5 to-transparent" />
 
       <div className="relative z-10">
-        <div className="inline-flex items-center gap-2 bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-2 mb-6">
-          <div className="live-dot" />
-          <span className="text-sm font-bold text-red-400 uppercase tracking-wider">Live Auction</span>
+        <div className="flex items-center justify-center gap-4 mb-6">
+          <div className="inline-flex items-center gap-2 bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-2">
+            <div className="live-dot" />
+            <span className="text-sm font-bold text-red-400 uppercase tracking-wider">Live Auction</span>
+          </div>
+          <LiveTimer isActive={true} playerId={currentPlayer.id} />
         </div>
 
         <div className="flex flex-col md:flex-row items-center justify-center gap-8">
