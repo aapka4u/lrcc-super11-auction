@@ -146,6 +146,17 @@ export async function POST(request: NextRequest) {
         if (!playerId) {
           return NextResponse.json({ error: 'Player ID required' }, { status: 400 });
         }
+        // CRITICAL: Validate player is not already sold
+        if (state.soldPlayers.includes(playerId)) {
+          return NextResponse.json({ 
+            error: 'This player was already sold. Cannot re-auction.' 
+          }, { status: 400 });
+        }
+        // Validate player exists
+        const playerToAuction = findPlayer(playerId);
+        if (!playerToAuction) {
+          return NextResponse.json({ error: 'Player not found' }, { status: 400 });
+        }
         state.status = 'LIVE';
         state.currentPlayerId = playerId;
         state.soldToTeamId = null;

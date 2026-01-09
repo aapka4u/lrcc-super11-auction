@@ -1,9 +1,98 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { TEAMS, PLAYERS, ALL_PLAYERS } from '@/lib/data';
-import { Team, Player, AuctionStatus, PlayerProfile, BASE_PRICES, TEAM_SIZE } from '@/lib/types';
+import { Team, Player, AuctionStatus, PlayerProfile, TEAM_SIZE } from '@/lib/types';
+
+// Confirmation Modal Component
+function ConfirmModal({
+  isOpen,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  confirmVariant = 'danger',
+  onConfirm,
+  onCancel,
+  requiresInput,
+  inputPlaceholder,
+  inputMatch,
+}: {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  confirmVariant?: 'danger' | 'primary';
+  onConfirm: () => void;
+  onCancel: () => void;
+  requiresInput?: boolean;
+  inputPlaceholder?: string;
+  inputMatch?: string;
+}) {
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen && requiresInput) {
+      inputRef.current?.focus();
+    }
+    if (!isOpen) {
+      setInputValue('');
+    }
+  }, [isOpen, requiresInput]);
+
+  if (!isOpen) return null;
+
+  const canConfirm = !requiresInput || inputValue === inputMatch;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div className="glass bg-slate-900/95 border border-white/20 rounded-2xl max-w-md w-full p-6 animate-scale-in">
+        <h2 id="modal-title" className="text-xl font-bold text-white mb-3">{title}</h2>
+        <p className="text-white/70 mb-4">{message}</p>
+
+        {requiresInput && (
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={inputPlaceholder}
+            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-red-500 mb-4"
+            aria-label={inputPlaceholder}
+          />
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 bg-white/10 hover:bg-white/20 text-white font-semibold py-3 rounded-xl transition-colors"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            className={`flex-1 font-semibold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              confirmVariant === 'danger'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getRoleIcon(role?: string): string {
   switch (role) {
@@ -60,12 +149,46 @@ export default function AdminPage() {
   const [pauseMessage, setPauseMessage] = useState('');
   const [pauseMinutes, setPauseMinutes] = useState<number | undefined>(undefined);
   const [soldPrice, setSoldPrice] = useState<number>(0);
+  const [soldPriceInput, setSoldPriceInput] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [teamsExpanded, setTeamsExpanded] = useState(false);
-  const [randomMode, setRandomMode] = useState(false);
+  const [showJokerSelector, setShowJokerSelector] = useState(false);
+
+  // Modal states
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showUnsoldModal, setShowUnsoldModal] = useState(false);
+  const [showDeleteImageModal, setShowDeleteImageModal] = useState<string | null>(null);
+
+  // Audio refs (prevent memory leaks)
+  const hammerAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bellAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize audio on mount
+  useEffect(() => {
+    hammerAudioRef.current = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-judge-gavel-hit-530.mp3');
+    bellAudioRef.current = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-happy-bells-notification-937.mp3');
+    return () => {
+      hammerAudioRef.current = null;
+      bellAudioRef.current = null;
+    };
+  }, []);
+
+  const playHammer = useCallback(() => {
+    if (hammerAudioRef.current) {
+      hammerAudioRef.current.currentTime = 0;
+      hammerAudioRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  const playBell = useCallback(() => {
+    if (bellAudioRef.current) {
+      bellAudioRef.current.currentTime = 0;
+      bellAudioRef.current.play().catch(() => {});
+    }
+  }, []);
 
   const fetchState = useCallback(async () => {
     try {
@@ -113,6 +236,9 @@ export default function AdminPage() {
   useEffect(() => {
     if (state?.status === 'LIVE' && state.currentPlayerBasePrice) {
       setSoldPrice(state.currentPlayerBasePrice);
+      setSoldPriceInput(state.currentPlayerBasePrice.toString());
+    } else if (state?.status !== 'LIVE') {
+      setSoldPriceInput('');
     }
   }, [state?.status, state?.currentPlayerBasePrice]);
 
@@ -156,8 +282,9 @@ export default function AdminPage() {
       if (res.ok) {
         setMessage({ type: 'success', text: `${action} successful!` });
         await fetchState();
-        if (action === 'SOLD' || action === 'UNSOLD') {
+        if (action === 'SOLD' || action === 'UNSOLD' || action === 'CLEAR') {
           setSelectedPlayerId('');
+          setShowJokerSelector(false);
         }
       } else {
         setMessage({ type: 'error', text: result.error || 'Action failed' });
@@ -181,7 +308,7 @@ export default function AdminPage() {
 
   // Random player selection
   const handleRandomPlayer = async () => {
-    setLoading(true);
+    // Don't set loading here - performAction handles it
     try {
       const res = await fetch('/api/state', {
         method: 'POST',
@@ -194,18 +321,64 @@ export default function AdminPage() {
         await performAction('START_AUCTION', { playerId: result.randomPlayer.id });
       } else {
         setMessage({ type: 'error', text: result.error || 'No players available' });
+        setTimeout(() => setMessage(null), 3000);
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to get random player' });
-    } finally {
-      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
-  // Joker card handler
+  // Joker card handler (for current LIVE player)
   const handleJokerCard = async () => {
     await performAction('JOKER');
     setMessage({ type: 'success', text: 'Joker card played! Team can claim at base price.' });
+  };
+
+  // Joker card request handler (select player first, then start auction with joker)
+  const handleJokerRequest = async (playerId: string) => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      // Start auction with the selected player
+      const startRes = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, action: 'START_AUCTION', playerId }),
+      });
+      
+      if (!startRes.ok) {
+        const error = await startRes.json();
+        setMessage({ type: 'error', text: error.error || 'Failed to start auction' });
+        setLoading(false); // Fix: Reset loading state before returning
+        setTimeout(() => setMessage(null), 3000);
+        return;
+      }
+
+      // Immediately set joker for this player
+      const jokerRes = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, action: 'JOKER' }),
+      });
+
+      if (jokerRes.ok) {
+        setMessage({ type: 'success', text: 'Joker card activated! Team can claim at base price.' });
+        setShowJokerSelector(false);
+        setSelectedPlayerId(''); // Clear selection
+        await fetchState();
+      } else {
+        const error = await jokerRes.json();
+        // If joker fails but auction started, rollback by clearing current player
+        setMessage({ type: 'error', text: error.error || 'Failed to activate joker. Auction started but joker not active.' });
+        await fetchState(); // Refresh to show current state
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Network error' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
   };
 
   // Handle image file upload - convert to base64
@@ -257,9 +430,8 @@ export default function AdminPage() {
     }
   };
 
-  // Delete profile image
+  // Delete profile image (called after modal confirmation)
   const deleteProfileImage = async (playerId: string) => {
-    if (!confirm('Remove this player\'s image?')) return;
     setLoading(true);
     try {
       const res = await fetch('/api/players', {
@@ -271,7 +443,7 @@ export default function AdminPage() {
         setMessage({ type: 'success', text: 'Image removed!' });
         fetchProfiles();
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to remove' });
     } finally {
       setLoading(false);
@@ -295,18 +467,22 @@ export default function AdminPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-2xl p-8 w-full max-w-sm">
+        <div className="glass rounded-2xl p-8 w-full max-w-sm" role="main">
           <h1 className="text-2xl font-bold text-white text-center mb-6">
             🔐 Admin Access
           </h1>
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleLogin} aria-label="Admin login form">
+            <label htmlFor="pin-input" className="sr-only">Enter PIN</label>
             <input
+              id="pin-input"
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               placeholder="Enter PIN"
+              aria-invalid={pinError}
+              aria-describedby={pinError ? 'pin-error' : undefined}
               className={`
                 w-full px-4 py-3 rounded-xl bg-white/10 border text-white text-center text-2xl tracking-widest
                 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500
@@ -315,13 +491,24 @@ export default function AdminPage() {
               autoFocus
             />
             {pinError && (
-              <p className="text-red-400 text-sm text-center mt-2">Incorrect PIN</p>
+              <p id="pin-error" className="text-red-400 text-sm text-center mt-2" role="alert">
+                Incorrect PIN
+              </p>
             )}
             <button
               type="submit"
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors"
+              disabled={loading || !pin}
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+              aria-label="Submit PIN"
             >
-              Enter
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Verifying...
+                </span>
+              ) : (
+                'Enter'
+              )}
             </button>
           </form>
         </div>
@@ -331,8 +518,9 @@ export default function AdminPage() {
 
   if (!state) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Loading">
         <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+        <span className="sr-only">Loading auction data...</span>
       </div>
     );
   }
@@ -370,6 +558,8 @@ export default function AdminPage() {
               </div>
               <Link
                 href="/lrccsuper11/players"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
               >
                 👥 View All
@@ -460,21 +650,103 @@ export default function AdminPage() {
           )}
             </div>
 
+            {/* Joker Card Request */}
+            {(state.status === 'IDLE' || state.status === 'SOLD') && (
+              <div className="glass rounded-xl p-3 border-2 border-purple-500/30">
+                <h3 className="text-xs font-semibold text-purple-300 uppercase tracking-wider mb-2">
+                  🎴 Joker Card Request
+                </h3>
+                <p className="text-xs text-white/50 mb-3">
+                  Team wants a specific player at base price
+                </p>
+                {!showJokerSelector ? (
+                  <button
+                    onClick={() => setShowJokerSelector(true)}
+                    disabled={loading}
+                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-bold py-3 rounded-xl transition-colors"
+                  >
+                    🎴 Request Joker Card
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <select
+                      value={selectedPlayerId}
+                      onChange={(e) => setSelectedPlayerId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="" className="bg-slate-800">-- Select player --</option>
+                      {aplusPlayers.length > 0 && (
+                        <optgroup label={`⭐ Star Players (${aplusPlayers.length})`} className="bg-slate-800">
+                          {aplusPlayers.map(p => (
+                            <option key={p.id} value={p.id} className="bg-slate-800">
+                              {getRoleIcon(p.role)} {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {basePlayers.length > 0 && (
+                        <optgroup label={`League Players (${basePlayers.length})`} className="bg-slate-800">
+                          {basePlayers.map(p => (
+                            <option key={p.id} value={p.id} className="bg-slate-800">
+                              {getRoleIcon(p.role)} {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {unsoldPlayers.length > 0 && (
+                        <optgroup label={`⚠️ Unsold (${unsoldPlayers.length})`} className="bg-slate-800">
+                          {unsoldPlayers.map(p => (
+                            <option key={p.id} value={p.id} className="bg-slate-800">
+                              {getRoleIcon(p.role)} {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (selectedPlayerId) {
+                            handleJokerRequest(selectedPlayerId);
+                          }
+                        }}
+                        disabled={!selectedPlayerId || loading}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-colors"
+                      >
+                        Start with Joker
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowJokerSelector(false);
+                          setSelectedPlayerId(''); // Fix: Also clear selection on cancel
+                        }}
+                        className="px-3 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Soundboard */}
             <div className="glass rounded-xl p-3">
               <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">
                 🔊 Soundboard
               </h3>
               <div className="space-y-2">
-                <button 
-                  onClick={() => new Audio('https://assets.mixkit.co/sfx/preview/mixkit-judge-gavel-hit-530.mp3').play()}
-                  className="w-full bg-amber-600/20 hover:bg-amber-600/40 text-amber-500 border border-amber-600/30 py-2 rounded-lg text-sm font-semibold transition-colors"
+                <button
+                  onClick={playHammer}
+                  className="w-full bg-amber-600/20 hover:bg-amber-600/40 text-amber-500 border border-amber-600/30 py-2 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  aria-label="Play hammer sound"
                 >
                   🔨 Hammer
                 </button>
-                <button 
-                  onClick={() => new Audio('https://assets.mixkit.co/sfx/preview/mixkit-happy-bells-notification-937.mp3').play()}
-                  className="w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/30 py-2 rounded-lg text-sm font-semibold transition-colors"
+                <button
+                  onClick={playBell}
+                  className="w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/30 py-2 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label="Play bell sound"
                 >
                   🔔 Bell
                 </button>
@@ -517,7 +789,9 @@ export default function AdminPage() {
               <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-1">
                 📸 Profiles
               </h3>
-              <p className="text-xs text-white/40">Manage player images</p>
+              <p className="text-xs text-white/40">
+                {activeTab === 'profiles' ? '← Back to Auction' : 'Manage player images'}
+              </p>
             </button>
 
             {/* Danger Zone */}
@@ -526,14 +800,10 @@ export default function AdminPage() {
                 ⚠️ Danger Zone
               </h3>
               <button
-                onClick={() => {
-                  const confirmText = prompt("Type 'RESET' to confirm:");
-                  if (confirmText === 'RESET') {
-                    performAction('RESET', { confirmReset: true });
-                  }
-                }}
+                onClick={() => setShowResetModal(true)}
                 disabled={loading}
-                className="w-full bg-red-900/50 hover:bg-red-900 text-red-300 font-semibold py-2 rounded-lg transition-colors text-sm"
+                className="w-full bg-red-900/50 hover:bg-red-900 text-red-300 font-semibold py-2 rounded-lg transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                aria-label="Reset entire auction"
               >
                 🔄 Reset Auction
               </button>
@@ -553,99 +823,34 @@ export default function AdminPage() {
                     🎯 Auction Control
                   </h2>
 
-                  {/* STEP 1: Select Player (IDLE/SOLD) */}
+                  {/* STEP 1: Select Player (IDLE/SOLD) - Random Only */}
                   {(state.status === 'IDLE' || state.status === 'SOLD') && (
                     <div className="space-y-4">
                       <div className="text-center mb-4">
                         <span className="text-sm text-white/50">Step 1 of 3</span>
-                        <h3 className="text-lg font-semibold text-white mt-1">Select Next Player</h3>
+                        <h3 className="text-lg font-semibold text-white mt-1">Pick Next Player</h3>
+                        <p className="text-xs text-white/40 mt-1">Random selection only • Use Joker Card in sidebar for specific player requests</p>
                       </div>
 
-                      {/* Mode Toggle */}
-                      <div className="flex gap-2 mb-4">
-                        <button
-                          onClick={() => setRandomMode(false)}
-                          className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
-                            !randomMode
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white/10 text-white/70 hover:bg-white/20'
-                          }`}
-                        >
-                          📋 Manual
-                        </button>
-                        <button
-                          onClick={() => setRandomMode(true)}
-                          className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
-                            randomMode
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white/10 text-white/70 hover:bg-white/20'
-                          }`}
-                        >
-                          🎲 Random
-                        </button>
-                      </div>
-
-                      {/* Random Mode */}
-                      {randomMode && (
-                        <button
-                          onClick={handleRandomPlayer}
-                          disabled={loading}
-                          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:bg-gray-600 text-white font-bold py-4 rounded-xl transition-colors text-lg"
-                        >
-                          🎲 Pick Random Player
-                        </button>
-                      )}
-
-                      {/* Manual Mode */}
-                      {!randomMode && (
-                        <>
-                          <select
-                            value={selectedPlayerId}
-                            onChange={(e) => setSelectedPlayerId(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="" className="bg-slate-800">-- Select a player --</option>
-
-                            {aplusPlayers.length > 0 && (
-                              <optgroup label={`⭐ Star Players (${aplusPlayers.length})`} className="bg-slate-800">
-                                {aplusPlayers.map(p => (
-                                  <option key={p.id} value={p.id} className="bg-slate-800">
-                                    {getRoleIcon(p.role)} {p.name} • {p.role || 'Player'} ({p.club})
-                                  </option>
-                                ))}
-                              </optgroup>
+                      <button
+                        onClick={handleRandomPlayer}
+                        disabled={loading || (availablePlayers.length === 0 && unsoldPlayers.length === 0)}
+                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors text-lg relative"
+                      >
+                        {loading ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Selecting...
+                          </span>
+                        ) : (
+                          <>
+                            🎲 Pick Random Player
+                            {(availablePlayers.length === 0 && unsoldPlayers.length === 0) && (
+                              <span className="block text-xs mt-1 opacity-75">No players available</span>
                             )}
-
-                            {basePlayers.length > 0 && (
-                              <optgroup label={`League Players (${basePlayers.length})`} className="bg-slate-800">
-                                {basePlayers.map(p => (
-                                  <option key={p.id} value={p.id} className="bg-slate-800">
-                                    {getRoleIcon(p.role)} {p.name} • {p.role || 'Player'} ({p.club})
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-
-                            {unsoldPlayers.length > 0 && (
-                              <optgroup label={`⚠️ Unsold Players (${unsoldPlayers.length})`} className="bg-slate-800">
-                                {unsoldPlayers.map(p => (
-                                  <option key={p.id} value={p.id} className="bg-slate-800">
-                                    {getRoleIcon(p.role)} {p.name} • {p.role || 'Player'} ({p.club})
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
-
-                          <button
-                            onClick={() => performAction('START_AUCTION', { playerId: selectedPlayerId })}
-                            disabled={!selectedPlayerId || loading}
-                            className="w-full mt-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors text-lg"
-                          >
-                            🔴 Start Auction
-                          </button>
-                        </>
-                      )}
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
 
@@ -677,14 +882,30 @@ export default function AdminPage() {
                           <span className="text-2xl text-white">₹</span>
                           <input
                             type="number"
-                            value={soldPrice}
-                            onChange={(e) => setSoldPrice(Number(e.target.value))}
+                            value={soldPriceInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              // Only allow digits (prevent NaN and negative)
+                              if (val === '' || /^\d+$/.test(val)) {
+                                setSoldPriceInput(val);
+                                const numVal = val === '' ? 0 : Number(val);
+                                setSoldPrice(numVal);
+                              }
+                            }}
+                            onBlur={() => {
+                              // Ensure minimum base price on blur
+                              if (soldPrice < state.currentPlayerBasePrice || isNaN(soldPrice)) {
+                                setSoldPrice(state.currentPlayerBasePrice);
+                                setSoldPriceInput(state.currentPlayerBasePrice.toString());
+                              }
+                            }}
                             min={state.currentPlayerBasePrice}
                             step={100}
+                            placeholder={state.currentPlayerBasePrice.toString()}
                             className="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
                           />
                         </div>
-                        {soldPrice < state.currentPlayerBasePrice && (
+                        {(isNaN(soldPrice) || soldPrice < state.currentPlayerBasePrice) && (
                           <p className="text-red-400 text-sm mt-2">Price must be at least ₹{state.currentPlayerBasePrice}</p>
                         )}
                       </div>
@@ -714,7 +935,7 @@ export default function AdminPage() {
                           const canAfford = soldPrice <= team.maxBid;
                           const isFull = team.playersNeeded <= 0;
                           const isJoker = state.jokerPlayerId === state.currentPlayer?.id;
-                          const isDisabled = loading || (!isJoker && !canAfford) || isFull || soldPrice < state.currentPlayerBasePrice;
+                          const isDisabled = loading || (!isJoker && !canAfford) || isFull || isNaN(soldPrice) || soldPrice < state.currentPlayerBasePrice;
 
                           return (
                             <button
@@ -767,9 +988,10 @@ export default function AdminPage() {
                       </div>
 
                       <button
-                        onClick={() => performAction('UNSOLD')}
+                        onClick={() => setShowUnsoldModal(true)}
                         disabled={loading}
-                        className="w-full mt-4 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 rounded-xl transition-colors"
+                        className="w-full mt-4 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        aria-label={`Mark ${state.currentPlayer?.name || 'player'} as unsold`}
                       >
                         ⏭️ Mark as Unsold
                       </button>
@@ -804,12 +1026,73 @@ export default function AdminPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Unsold Players List */}
+                {unsoldPlayers.length > 0 && (
+                  <div className="glass rounded-2xl p-6 mt-6 border border-amber-500/30">
+                    <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                      ⚠️ Unsold Players ({unsoldPlayers.length})
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {unsoldPlayers.map(player => (
+                        <div
+                          key={player.id}
+                          className="bg-white/5 rounded-lg p-3 border border-amber-500/20 flex flex-col justify-between gap-2"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{getRoleIcon(player.role)}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-white truncate">{player.name}</div>
+                                <div className="text-xs text-white/50">{player.role || 'Player'}</div>
+                              </div>
+                              {player.category === 'APLUS' && (
+                                <span className="text-xs bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded">⭐</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-white/40 mt-1">{player.club}</div>
+                          </div>
+                          
+                          {/* Shortcut button */}
+                          {(state.status === 'IDLE' || state.status === 'SOLD') && (
+                            <button
+                              onClick={() => handleJokerRequest(player.id)}
+                              disabled={loading}
+                              className="w-full text-xs bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-600/30 py-2 rounded-lg font-semibold transition-colors mt-1"
+                            >
+                              🎴 Play Joker
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-white/40 mt-4">
+                      💡 These players can be re-auctioned using the Joker Card or Random selection
+                    </p>
+                  </div>
+                )}
               </>
             )}
 
             {/* PROFILES TAB */}
             {activeTab === 'profiles' && (
               <>
+                {/* Back to Auction Button - Prominent */}
+                <div className="mb-4">
+                  <button
+                    onClick={() => setActiveTab('auction')}
+                    className="w-full glass rounded-xl p-4 border-2 border-blue-500/30 hover:border-blue-500/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="text-2xl">←</span>
+                      <div className="text-left">
+                        <div className="text-lg font-bold text-white">Back to Auction Control</div>
+                        <div className="text-xs text-white/50">Return to main auction flow</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
                 {/* Instructions */}
                 <section className="glass rounded-2xl p-4 mb-6">
                   <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
@@ -858,9 +1141,10 @@ export default function AdminPage() {
                             )}
                             {profile?.image && (
                               <button
-                                onClick={() => deleteProfileImage(player.id)}
-                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center hover:bg-red-600"
+                                onClick={() => setShowDeleteImageModal(player.id)}
+                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
                                 title="Remove image"
+                                aria-label={`Remove ${player.name}'s image`}
                               >
                                 ×
                               </button>
@@ -996,6 +1280,54 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modals */}
+      <ConfirmModal
+        isOpen={showResetModal}
+        title="Reset Auction?"
+        message="This will clear all sold players, rosters, and prices. This action cannot be undone."
+        confirmText="Reset"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        requiresInput
+        inputPlaceholder="Type RESET to confirm"
+        inputMatch="RESET"
+        onConfirm={() => {
+          setShowResetModal(false);
+          performAction('RESET', { confirmReset: true });
+        }}
+        onCancel={() => setShowResetModal(false)}
+      />
+
+      <ConfirmModal
+        isOpen={showUnsoldModal}
+        title="Mark as Unsold?"
+        message={`${state.currentPlayer?.name || 'This player'} will be added to the unsold list for re-auctioning later.`}
+        confirmText="Mark Unsold"
+        cancelText="Cancel"
+        confirmVariant="primary"
+        onConfirm={() => {
+          setShowUnsoldModal(false);
+          performAction('UNSOLD');
+        }}
+        onCancel={() => setShowUnsoldModal(false)}
+      />
+
+      <ConfirmModal
+        isOpen={!!showDeleteImageModal}
+        title="Remove Image?"
+        message="This will permanently remove the player's profile image."
+        confirmText="Remove"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (showDeleteImageModal) {
+            deleteProfileImage(showDeleteImageModal);
+          }
+          setShowDeleteImageModal(null);
+        }}
+        onCancel={() => setShowDeleteImageModal(null)}
+      />
     </main>
   );
 }
