@@ -5,6 +5,7 @@ import { getInitialState, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById, calculateMa
 
 const STATE_KEY = 'auction:state';
 const PROFILES_KEY = 'player:profiles';
+const TEAM_PROFILES_KEY = 'team:profiles';
 const ADMIN_PIN = process.env.ADMIN_PIN;
 
 // Helper to find player from both auction pool and team leaders
@@ -21,10 +22,11 @@ const mergeProfile = (player: Player, profiles: Record<string, PlayerProfile>): 
 // GET: Fetch current state (public)
 export async function GET() {
   try {
-    // Fetch auction state and player profiles in parallel
-    const [state, profiles] = await Promise.all([
+    // Fetch auction state, player profiles, and team profiles in parallel
+    const [state, profiles, teamProfiles] = await Promise.all([
       kv.get<AuctionState>(STATE_KEY),
       kv.get<Record<string, PlayerProfile>>(PROFILES_KEY),
+      kv.get<Record<string, { logo?: string }>>(TEAM_PROFILES_KEY),
     ]);
 
     let auctionState = state;
@@ -117,6 +119,9 @@ export async function GET() {
       jokerPlayerId: auctionState.jokerPlayerId || null,
       jokerRequestingTeamId: auctionState.jokerRequestingTeamId || null,
       usedJokers: auctionState.usedJokers || {},
+      teamProfiles: teamProfiles || {},
+      rosters: auctionState.rosters,
+      teamSpent: auctionState.teamSpent,
     });
   } catch (error) {
     console.error('Error fetching state:', error);
