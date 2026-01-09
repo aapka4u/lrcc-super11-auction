@@ -201,6 +201,7 @@ function useSoundEffects() {
   const hammerAudioRef = useRef<HTMLAudioElement | null>(null);
   const bellAudioRef = useRef<HTMLAudioElement | null>(null);
   const isPlayingRef = useRef(false);
+  const audioTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize audio elements on first user interaction
   const initAudio = useCallback(() => {
@@ -220,20 +221,51 @@ function useSoundEffects() {
     }
   }, []);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (audioTimeoutRef.current) {
+        clearTimeout(audioTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const playHammer = useCallback(() => {
     if (!hammerAudioRef.current || isPlayingRef.current) return;
     isPlayingRef.current = true;
     hammerAudioRef.current.currentTime = 0;
-    hammerAudioRef.current.play().catch(() => {});
-    setTimeout(() => { isPlayingRef.current = false; }, 1000);
+    hammerAudioRef.current.play().catch((err) => {
+      // Audio play failed - non-critical, just log
+      console.warn('Failed to play hammer sound:', err);
+      isPlayingRef.current = false;
+    });
+    
+    // Clear previous timeout if exists
+    if (audioTimeoutRef.current) {
+      clearTimeout(audioTimeoutRef.current);
+    }
+    audioTimeoutRef.current = setTimeout(() => { 
+      isPlayingRef.current = false; 
+    }, 1000);
   }, []);
 
   const playBell = useCallback(() => {
     if (!bellAudioRef.current || isPlayingRef.current) return;
     isPlayingRef.current = true;
     bellAudioRef.current.currentTime = 0;
-    bellAudioRef.current.play().catch(() => {});
-    setTimeout(() => { isPlayingRef.current = false; }, 1000);
+    bellAudioRef.current.play().catch((err) => {
+      // Audio play failed - non-critical, just log
+      console.warn('Failed to play bell sound:', err);
+      isPlayingRef.current = false;
+    });
+    
+    // Clear previous timeout if exists
+    if (audioTimeoutRef.current) {
+      clearTimeout(audioTimeoutRef.current);
+    }
+    audioTimeoutRef.current = setTimeout(() => { 
+      isPlayingRef.current = false; 
+    }, 1000);
   }, []);
 
   return { initAudio, isUnlocked, playHammer, playBell };
@@ -244,13 +276,17 @@ function ShareButtons() {
   const [showToast, setShowToast] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
+  const [shareUrl, setShareUrl] = useState('https://draftcast.app/lrccsuper11');
 
   useEffect(() => {
     // Check if Web Share API is available
     setCanNativeShare(typeof navigator !== 'undefined' && !!navigator.share);
+    // Set share URL after mount to avoid SSR hydration issues
+    if (typeof window !== 'undefined') {
+      setShareUrl(window.location.href);
+    }
   }, []);
 
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : 'https://draftcast.app/lrccsuper11';
   const shareText = 'Check out the live cricket auction! 🏏';
   const shareTitle = 'LRCC Super 11 League 2026 - Live Auction';
 
@@ -261,9 +297,13 @@ function ShareButtons() {
         text: shareText,
         url: shareUrl,
       });
-    } catch (err) {
-      // User cancelled or error - silently fail
-      console.log('Share cancelled or failed');
+    } catch (err: any) {
+      // Only show error if it's not a user cancellation
+      if (err.name !== 'AbortError') {
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+      }
+      // User cancellation is silent (expected behavior)
     }
   };
 
@@ -413,7 +453,7 @@ export default function Home() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const { initAudio, isUnlocked, playHammer, playBell } = useSoundEffects();
   const prevStatusRef = useRef<Status | null>(null);
-  const [celebratedMilestones, setCelebratedMilestones] = useState<Set<number>>(new Set());
+  const celebratedMilestonesRef = useRef<Set<number>>(new Set());
   const [activeMilestone, setActiveMilestone] = useState<number | null>(null);
 
   // Team teaser state
@@ -425,6 +465,76 @@ export default function Home() {
   const [activeStoryVideo, setActiveStoryVideo] = useState<string | null>(null); // teamId
   const storyVideoShownRef = useRef<Set<string>>(new Set()); // Track which teams had their story shown
   const storyTriggerThresholds = useRef<Record<string, number>>({}); // teamId -> threshold (4 or 5)
+
+  // Load persisted state from localStorage on mount
+  // Each operation is independent with proper error handling
+  useEffect(() => {
+    // Load story videos shown
+    try {
+      const savedShown = localStorage.getItem('draftcast:storyVideosShown');
+      if (savedShown) {
+        storyVideoShownRef.current = new Set(JSON.parse(savedShown));
+      }
+    } catch (e) {
+      console.error('Failed to load story videos shown', e);
+      // Continue with empty set
+      storyVideoShownRef.current = new Set();
+    }
+
+    // Load trigger thresholds
+    try {
+      const savedThresholds = localStorage.getItem('draftcast:storyThresholds');
+      if (savedThresholds) {
+        storyTriggerThresholds.current = JSON.parse(savedThresholds);
+      }
+    } catch (e) {
+      console.error('Failed to load story thresholds', e);
+      // Continue with empty object
+      storyTriggerThresholds.current = {};
+    }
+
+    // Load last teaser count
+    try {
+      const savedCount = localStorage.getItem('draftcast:lastTeaserCount');
+      if (savedCount) {
+        const count = parseInt(savedCount, 10);
+        if (!isNaN(count)) {
+          lastTeaserSoldCountRef.current = count;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load last teaser count', e);
+      // Continue with default 0
+      lastTeaserSoldCountRef.current = 0;
+    }
+
+    // Load last teased team
+    try {
+      const savedTeam = localStorage.getItem('draftcast:lastTeasedTeam');
+      if (savedTeam) {
+        lastTeasedTeamRef.current = savedTeam;
+      }
+    } catch (e) {
+      console.error('Failed to load last teased team', e);
+      // Continue with null
+      lastTeasedTeamRef.current = null;
+    }
+
+    // Load celebrated milestones
+    try {
+      const savedMilestones = localStorage.getItem('draftcast:celebratedMilestones');
+      if (savedMilestones) {
+        const milestones = JSON.parse(savedMilestones);
+        if (Array.isArray(milestones)) {
+          celebratedMilestonesRef.current = new Set(milestones);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load milestones', e);
+      // Continue with empty set
+      celebratedMilestonesRef.current = new Set();
+    }
+  }, []);
 
   const { data: state, error: swrError } = useSWR<PublicState>('/api/state', fetcher, {
     refreshInterval: 1000,
@@ -439,18 +549,20 @@ export default function Home() {
     const percentage = Math.floor((state.soldCount / state.totalPlayers) * 100);
 
     for (const milestone of MILESTONES) {
-      if (percentage >= milestone && !celebratedMilestones.has(milestone)) {
+      if (percentage >= milestone && !celebratedMilestonesRef.current.has(milestone)) {
         // Trigger celebration
         setActiveMilestone(milestone);
-        setCelebratedMilestones(prev => new Set(Array.from(prev).concat(milestone)));
+        celebratedMilestonesRef.current.add(milestone);
+        // Persist milestones
+        localStorage.setItem('draftcast:celebratedMilestones', JSON.stringify(Array.from(celebratedMilestonesRef.current)));
         break; // Only celebrate one milestone at a time
       }
     }
-  }, [state?.soldCount, state?.totalPlayers, celebratedMilestones]);
+  }, [state?.soldCount, state?.totalPlayers]);
 
   // Team teaser logic - after 10 sold, every 3-4 sales
   useEffect(() => {
-    if (!state || state.soldCount < 10) return;
+    if (!state || !state.teams || state.soldCount < 10) return;
     if (activeMilestone || activeTeaser) return; // Don't show if milestone or teaser active
 
     const soldCount = state.soldCount;
@@ -477,13 +589,17 @@ export default function Home() {
         setActiveTeaser(randomTeam.id);
         lastTeaserSoldCountRef.current = soldCount;
         lastTeasedTeamRef.current = randomTeam.id;
+        
+        // Persist teaser state
+        localStorage.setItem('draftcast:lastTeaserCount', soldCount.toString());
+        localStorage.setItem('draftcast:lastTeasedTeam', randomTeam.id);
       }
     }
-  }, [state?.soldCount, activeMilestone, activeTeaser, state?.teams]);
+  }, [state?.soldCount, state?.teams, activeMilestone, activeTeaser]);
 
   // Team story video trigger - when team reaches 4-5 picks (randomized per team)
   useEffect(() => {
-    if (!state) return;
+    if (!state || !state.teams) return;
     if (activeMilestone || activeTeaser || activeStoryVideo) return; // Don't overlap with other overlays
 
     for (const team of state.teams) {
@@ -493,6 +609,8 @@ export default function Home() {
       // Assign a random threshold (4 or 5) for this team if not set
       if (!storyTriggerThresholds.current[team.id]) {
         storyTriggerThresholds.current[team.id] = Math.random() < 0.5 ? 4 : 5;
+        // Persist threshold
+        localStorage.setItem('draftcast:storyThresholds', JSON.stringify(storyTriggerThresholds.current));
       }
 
       const threshold = storyTriggerThresholds.current[team.id];
@@ -502,6 +620,8 @@ export default function Home() {
       if (totalPlayers >= threshold && team.roster.length >= (threshold - 2)) {
         setActiveStoryVideo(team.id);
         storyVideoShownRef.current = new Set(Array.from(storyVideoShownRef.current).concat(team.id));
+        // Persist shown videos
+        localStorage.setItem('draftcast:storyVideosShown', JSON.stringify(Array.from(storyVideoShownRef.current)));
         break; // Only one video at a time
       }
     }
@@ -575,8 +695,34 @@ export default function Home() {
   // Get the team for active story video
   const storyVideoTeam = activeStoryVideo ? state.teams.find(t => t.id === activeStoryVideo) : null;
 
+  // Structured data for SEO
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "SportsEvent",
+    "name": "LRCC + Super 11 Premier League 2026",
+    "description": "Live cricket player auction for LRCC + Super 11 Premier League 2026",
+    "location": {
+      "@type": "Place",
+      "name": "Parkwijk Utrecht"
+    },
+    "sport": "Cricket",
+    "eventStatus": state?.status === 'LIVE' ? 'https://schema.org/EventScheduled' : 
+                   state?.status === 'PAUSED' ? 'https://schema.org/EventPostponed' :
+                   'https://schema.org/EventScheduled',
+    "organizer": {
+      "@type": "Organization",
+      "name": "LRCC"
+    }
+  };
+
   return (
     <main className="min-h-screen pb-8">
+      {/* Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      
       {/* Share Buttons - Fixed position */}
       <ShareButtons />
 
@@ -605,30 +751,37 @@ export default function Home() {
         />
       )}
 
-      {/* Header */}
-      <header className="sticky top-0 z-50 glass border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white">
-                🏏 LRCC + Super 11 Premier League 2026
+      {/* Header - Mobile-first sticky nav */}
+      <header className="sticky top-0 z-50 glass border-b border-white/10 safe-area-inset-top">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3">
+          <div className="flex items-center justify-between gap-2">
+            {/* Logo & Title - Compact on mobile */}
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base sm:text-lg md:text-xl font-bold text-white truncate">
+                🏏 LRCC + Super 11
               </h1>
-              <p className="text-xs text-white/50">
-                Live Auction • Parkwijk Utrecht
+              <p className="text-[10px] sm:text-xs text-white/50 truncate">
+                Live Auction • Utrecht
               </p>
             </div>
-            <div className="flex items-center gap-4">
+
+            {/* Progress indicator - Always visible */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* All Players link - Icon only on mobile */}
               <Link
                 href="/lrccsuper11/players"
-                className="text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
+                className="touch-target bg-white/10 hover:bg-white/20 active:bg-white/25 text-white px-2.5 sm:px-3 py-2 rounded-xl transition-colors text-sm font-medium"
               >
-                👥 All Players
+                <span className="hidden sm:inline">👥 All</span>
+                <span className="sm:hidden">👥</span>
               </Link>
-              <div className="text-right">
-                <div className="text-sm font-semibold text-white/80">
-                  {state.soldCount} / {state.totalPlayers}
+
+              {/* Sold counter - Compact pill */}
+              <div className="bg-white/10 rounded-xl px-3 py-1.5 text-center">
+                <div className="text-sm sm:text-base font-bold text-white tabular-nums">
+                  {state.soldCount}<span className="text-white/40">/{state.totalPlayers}</span>
                 </div>
-                <div className="text-xs text-white/40">players sold</div>
+                <div className="text-[9px] sm:text-[10px] text-white/40 uppercase tracking-wider">sold</div>
               </div>
             </div>
           </div>
@@ -663,9 +816,10 @@ export default function Home() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      {/* Main content - Optimized padding for mobile */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-16">
         {/* Auction Status - Featured */}
-        <section className="mb-8">
+        <section className="mb-5 sm:mb-8">
           <AuctionStatus
             status={state.status}
             currentPlayer={state.currentPlayer}
@@ -674,7 +828,7 @@ export default function Home() {
 
           {/* Mystery Preview - Show when IDLE or after SOLD */}
           {(state.status === 'IDLE' || state.status === 'SOLD') && state.remainingByRole && (
-            <div className="mt-4">
+            <div className="mt-3 sm:mt-4">
               <MysteryPreview
                 remainingByRole={state.remainingByRole}
                 remainingAplusCount={state.remainingAplusCount || 0}
@@ -684,16 +838,17 @@ export default function Home() {
           )}
         </section>
 
-        {/* Teams Grid */}
+        {/* Teams Grid - Mobile optimized */}
         <section>
-          <h2 className="text-lg font-semibold text-white/70 mb-4 flex items-center gap-2">
+          <h2 className="text-base sm:text-lg font-semibold text-white/70 mb-3 sm:mb-4 flex items-center gap-2">
             <span>Teams</span>
-            <span className="text-sm font-normal text-white/40">
-              (Captain & Vice-Captain pre-assigned)
+            <span className="text-xs sm:text-sm font-normal text-white/40">
+              (C & VC pre-assigned)
             </span>
           </h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* 2-column on mobile for better overview, 3 on larger screens */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
             {state.teams.map((team) => (
               <TeamCard
                 key={team.id}
@@ -705,16 +860,31 @@ export default function Home() {
         </section>
       </div>
 
-      {/* Footer with connection status */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm border-t border-white/10 px-4 py-2">
-        <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-white/40">
-          <span>Auto-refreshing every 1s</span>
-          <div className="flex items-center gap-3">
-            <span className={`flex items-center gap-1 ${isUnlocked ? 'text-green-400' : 'text-white/40'}`}>
-              {isUnlocked ? '🔊' : '🔇'} {isUnlocked ? 'Sound on' : 'Click to enable sound'}
-            </span>
-            <span>Last update: {lastRefresh.toLocaleTimeString()}</span>
+      {/* Footer - Mobile optimized with safe area */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md border-t border-white/10 px-3 sm:px-4 py-2 safe-area-inset-bottom">
+        <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] sm:text-xs text-white/50">
+          {/* Connection indicator */}
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+            <span className="hidden sm:inline">Live</span>
           </div>
+
+          {/* Sound status - Touch friendly */}
+          <button
+            onClick={initAudio}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+              isUnlocked ? 'text-green-400' : 'text-white/40 hover:text-white/60 active:bg-white/10'
+            }`}
+          >
+            {isUnlocked ? '🔊' : '🔇'}
+            <span className="hidden sm:inline">{isUnlocked ? 'Sound on' : 'Tap for sound'}</span>
+          </button>
+
+          {/* Last update - Compact on mobile */}
+          <span className="tabular-nums">
+            <span className="hidden sm:inline">Updated </span>
+            {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
         </div>
       </footer>
     </main>

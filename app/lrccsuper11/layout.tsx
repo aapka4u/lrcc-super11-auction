@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'LRCC Super 11 League 2026 - Live Auction',
   description: 'Watch the live cricket player auction for LRCC + Super 11 Premier League 2026. Real-time bidding, team rosters, and more!',
+  alternates: {
+    canonical: 'https://draftcast.app/lrccsuper11',
+  },
   openGraph: {
     title: 'LRCC Super 11 League 2026 - Live Auction',
     description: 'Watch the live cricket player auction for LRCC + Super 11 Premier League 2026. Real-time bidding, team rosters, and more!',
@@ -32,5 +36,5 @@ export default function LRCCSuper11Layout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 }

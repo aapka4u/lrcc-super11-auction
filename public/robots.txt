@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /lrccsuper11/admin
+Disallow: /api/
+
+Sitemap: https://draftcast.app/sitemap.xml

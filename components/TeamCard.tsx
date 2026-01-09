@@ -18,23 +18,23 @@ function getInitials(name: string): string {
 
 function PlayerBadge({ player }: { player: Player }) {
   return (
-    <div className="flex items-center gap-2 bg-slate-800/80 rounded-lg px-2 py-1.5">
+    <div className="flex items-center gap-2.5 bg-slate-800/70 backdrop-blur-sm rounded-xl px-2.5 py-2 border border-white/5">
       {player.image ? (
         <img
           src={player.image}
           alt={player.name}
-          className="w-8 h-8 rounded-md object-cover"
+          className="w-9 h-9 rounded-lg object-cover ring-1 ring-white/10"
         />
       ) : (
         <div
-          className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white"
+          className="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-[11px] font-semibold text-white/90"
         >
           {getInitials(player.name)}
         </div>
       )}
-      <span className="text-sm text-white truncate font-medium">{player.name}</span>
+      <span className="text-sm text-white truncate font-medium flex-1 min-w-0">{player.name}</span>
       {player.category === 'APLUS' && (
-        <span className="text-[10px] bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded font-medium">
+        <span className="text-xs bg-amber-500/25 text-amber-300 px-1.5 py-0.5 rounded-md font-medium shrink-0">
           ⭐
         </span>
       )}
@@ -44,19 +44,21 @@ function PlayerBadge({ player }: { player: Player }) {
 
 export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
   const totalPlayers = 2 + team.roster.length; // Captain + VC + roster
+  const maxPlayers = 8; // Total team size
+  const progressPercent = (totalPlayers / maxPlayers) * 100;
 
   return (
     <div
       className={`
-        rounded-2xl p-4 transition-all duration-500 relative overflow-hidden
+        rounded-2xl p-3.5 sm:p-4 transition-all duration-500 relative overflow-hidden
         ${isHighlighted
-          ? 'scale-[1.02] z-10'
-          : 'glass hover:bg-slate-800/90'
+          ? 'z-10'
+          : 'glass'
         }
       `}
       style={isHighlighted ? {
-        backgroundColor: '#0f172a',
-        boxShadow: `0 0 40px ${team.color}60, 0 0 80px ${team.color}30`,
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        boxShadow: `0 0 40px ${team.color}50, 0 0 80px ${team.color}25`,
         border: `2px solid ${team.color}`,
       } : undefined}
     >
@@ -97,87 +99,101 @@ export default function TeamCard({ team, isHighlighted }: TeamCardProps) {
           />
         </>
       )}
-      {/* Team Header */}
-      <div className="flex items-center gap-3 mb-3">
-        <div 
-          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg"
+      {/* Team Header - Mobile optimized */}
+      <div className="flex items-center gap-2.5 sm:gap-3 mb-3">
+        <div
+          className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shrink-0"
           style={{ backgroundColor: team.color }}
         >
           {team.name.split(' ')[1]?.[0] || team.name[0]}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-white truncate">{team.name}</h3>
-          <p className="text-xs text-slate-400">
-            {totalPlayers} players
-          </p>
+          <h3 className="font-semibold text-white truncate text-sm sm:text-base leading-tight">{team.name}</h3>
+          {/* Progress bar */}
+          <div className="mt-1.5 flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${progressPercent}%`,
+                  backgroundColor: team.color,
+                }}
+              />
+            </div>
+            <span className="text-[10px] sm:text-xs text-white/50 font-medium tabular-nums shrink-0">
+              {totalPlayers}/{maxPlayers}
+            </span>
+          </div>
         </div>
         {isHighlighted && (
           <div
-            className="text-white text-xs font-bold px-2 py-1 rounded-full animate-bounce"
+            className="text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-lg animate-bounce shrink-0"
             style={{ backgroundColor: team.color }}
           >
-            SOLD!
+            NEW!
           </div>
         )}
       </div>
 
-      {/* Captain & Vice Captain */}
-      <div className="space-y-2 mb-3">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-amber-400 font-medium w-6">C</span>
+      {/* Captain & Vice Captain - Compact for mobile */}
+      <div className="space-y-1.5 mb-3">
+        <div className="flex items-center gap-2 bg-amber-500/10 rounded-lg px-2 py-1.5 border border-amber-500/20">
+          <span className="text-amber-400 font-bold text-xs w-5 shrink-0">C</span>
           {team.captainPlayer?.image ? (
             <img
               src={team.captainPlayer.image}
               alt={team.captain}
-              className="w-8 h-8 rounded-md object-cover"
+              className="w-7 h-7 rounded-md object-cover ring-1 ring-amber-500/30"
             />
           ) : (
-            <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white">
+            <div className="w-7 h-7 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white">
               {getInitials(team.captain)}
             </div>
           )}
-          <span className="text-white font-medium">{team.captain}</span>
+          <span className="text-white font-medium text-sm truncate">{team.captain}</span>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-amber-500/80 font-medium w-6">VC</span>
+        <div className="flex items-center gap-2 bg-amber-500/5 rounded-lg px-2 py-1.5 border border-amber-500/10">
+          <span className="text-amber-500/70 font-bold text-xs w-5 shrink-0">VC</span>
           {team.viceCaptainPlayer?.image ? (
             <img
               src={team.viceCaptainPlayer.image}
               alt={team.viceCaptain}
-              className="w-8 h-8 rounded-md object-cover"
+              className="w-7 h-7 rounded-md object-cover ring-1 ring-amber-500/20"
             />
           ) : (
-            <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white">
+            <div className="w-7 h-7 rounded-md bg-slate-700 flex items-center justify-center text-[10px] font-semibold text-white">
               {getInitials(team.viceCaptain)}
             </div>
           )}
-          <span className="text-white font-medium">{team.viceCaptain}</span>
+          <span className="text-white/90 font-medium text-sm truncate">{team.viceCaptain}</span>
         </div>
       </div>
 
-      {/* Divider */}
+      {/* Roster - with subtle divider */}
       {team.roster.length > 0 && (
-        <div className="border-t border-white/10 my-3" />
+        <>
+          <div className="border-t border-white/5 my-2.5" />
+          <div className="space-y-1.5">
+            {team.roster.map((player, index) => (
+              <div
+                key={player.id}
+                className="animate-slide-up"
+                style={{ animationDelay: `${index * 80}ms` }}
+              >
+                <PlayerBadge player={player} />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* Roster */}
-      <div className="space-y-1.5">
-        {team.roster.map((player, index) => (
-          <div 
-            key={player.id}
-            className="animate-fade-in-up"
-            style={{ animationDelay: `${index * 100}ms` }}
-          >
-            <PlayerBadge player={player} />
-          </div>
-        ))}
-      </div>
-
-      {/* Empty state */}
+      {/* Empty state - Friendlier message */}
       {team.roster.length === 0 && (
-        <p className="text-xs text-slate-500 italic text-center py-2">
-          No players bought yet
-        </p>
+        <div className="text-center py-3 opacity-60">
+          <p className="text-xs text-slate-400">
+            Waiting for picks...
+          </p>
+        </div>
       )}
     </div>
   );

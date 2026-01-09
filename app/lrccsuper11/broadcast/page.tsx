@@ -54,8 +54,7 @@ export default function BroadcastPage() {
       setState(data);
       
       // Calculate recent sales for ticker
-      // This is a simplified approach; ideally the API returns a chronological list of sales
-      // For now, we'll just show the last sold player if status is SOLD
+      // Show the last sold player if status is SOLD
       if (data.status === 'SOLD' && data.currentPlayer && data.soldToTeam) {
         setRecentSales([{
           player: data.currentPlayer.name,
@@ -67,6 +66,17 @@ export default function BroadcastPage() {
       console.error('Error fetching state:', err);
     }
   }, []);
+
+  // Initialize recentSales from current state on mount/update
+  useEffect(() => {
+    if (state?.status === 'SOLD' && state.currentPlayer && state.soldToTeam) {
+      setRecentSales([{
+        player: state.currentPlayer.name,
+        team: state.soldToTeam.name,
+        teamColor: state.soldToTeam.color
+      }]);
+    }
+  }, [state?.status, state?.currentPlayer, state?.soldToTeam]);
 
   useEffect(() => {
     fetchState();

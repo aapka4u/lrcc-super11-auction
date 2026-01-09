@@ -1,8 +1,29 @@
 import Link from 'next/link';
 
 export default function Home() {
+  // Structured data for SEO
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "DraftCast",
+    "description": "Real-time broadcast platform for sports drafts and auctions",
+    "url": "https://draftcast.app",
+    "applicationCategory": "SportsApplication",
+    "operatingSystem": "Web",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  };
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8">
+      {/* Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       {/* Hero Section */}
       <div className="text-center max-w-2xl">
         {/* Logo/Title */}

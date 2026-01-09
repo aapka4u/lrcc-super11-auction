@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   title: 'DraftCast - Live Auction Broadcast',
   description: 'Real-time broadcast platform for sports drafts and auctions',
   metadataBase: new URL('https://draftcast.app'),
+  alternates: {
+    canonical: 'https://draftcast.app',
+  },
   openGraph: {
     title: 'DraftCast - Live Auction Broadcast',
     description: 'Real-time broadcast platform for sports drafts and auctions',
