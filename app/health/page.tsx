@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { storage as kv } from '@/lib/storage';
 import { TEAMS } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
@@ -32,14 +32,14 @@ export default async function HealthPage() {
       
       <div className="space-y-4 max-w-lg">
         <div className="flex justify-between items-center border-b border-white/20 pb-2">
-          <span>KV Database Connection</span>
+          <span>Database Connection</span>
           <span className={checks.kvConnection ? "text-green-500" : "text-red-500 font-bold"}>
             {checks.kvConnection ? "ONLINE" : "OFFLINE"}
           </span>
         </div>
 
         <div className="flex justify-between items-center border-b border-white/20 pb-2">
-          <span>KV Latency</span>
+          <span>Database Latency</span>
           <span className={checks.latency < 500 ? "text-green-500" : "text-yellow-500"}>
             {checks.latency}ms
           </span>

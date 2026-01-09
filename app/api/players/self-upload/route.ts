@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { storage as kv } from '@/lib/storage';
 import { NextRequest, NextResponse } from 'next/server';
 import { PlayerProfile } from '@/lib/types';
 import { ALL_PLAYERS } from '@/lib/data';
@@ -63,6 +63,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error in self-upload:', error);
-    return NextResponse.json({ error: 'Failed to upload photo' }, { status: 500 });
+    return NextResponse.json({ error: 'Upload failed. Please try again' }, { status: 500 });
   }
 }

@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { storage as kv } from '@/lib/storage';
 import { NextRequest, NextResponse } from 'next/server';
 import { AuctionState, Player, PlayerProfile, BASE_PRICES, TEAM_SIZE } from '@/lib/types';
 import { getInitialState, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById, calculateMaxBid } from '@/lib/data';
@@ -125,7 +125,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error fetching state:', error);
-    return NextResponse.json({ error: 'Failed to fetch state' }, { status: 500 });
+    return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 500 });
   }
 }
 
@@ -390,6 +390,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, state });
   } catch (error) {
     console.error('Error updating state:', error);
-    return NextResponse.json({ error: 'Failed to update state' }, { status: 500 });
+    return NextResponse.json({ error: 'Update failed. Please try again' }, { status: 500 });
   }
 }

@@ -132,12 +132,9 @@ All player and team data is pre-configured:
 - Page auto-refreshes every 2 seconds
 - If stuck, manually refresh the page
 
-## Tech Stack
+## Platform
 
-- Next.js 14 (App Router)
-- Vercel KV via Upstash Redis (persistent storage)
-- Tailwind CSS (glass morphism dark theme)
-- TypeScript
+Built on modern web technologies with cloud-hosted infrastructure.
 
 ## API Endpoints
 

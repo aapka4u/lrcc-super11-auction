@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { storage as kv } from '@/lib/storage';
 import { NextRequest, NextResponse } from 'next/server';
 import { TEAMS } from '@/lib/data';
 
@@ -66,6 +66,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to update team profile:', error);
-    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
+    return NextResponse.json({ error: 'Update failed. Please try again' }, { status: 500 });
   }
 }

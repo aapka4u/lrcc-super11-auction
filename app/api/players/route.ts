@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { storage as kv } from '@/lib/storage';
 import { NextRequest, NextResponse } from 'next/server';
 import { PlayerProfile } from '@/lib/types';
 import { ALL_PLAYERS } from '@/lib/data';
@@ -24,7 +24,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error fetching player profiles:', error);
-    return NextResponse.json({ error: 'Failed to fetch profiles' }, { status: 500 });
+    return NextResponse.json({ error: 'Unable to load data' }, { status: 500 });
   }
 }
 
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error updating player profile:', error);
-    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
+    return NextResponse.json({ error: 'Update failed. Please try again' }, { status: 500 });
   }
 }
 
@@ -100,6 +100,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting player profile:', error);
-    return NextResponse.json({ error: 'Failed to delete profile' }, { status: 500 });
+    return NextResponse.json({ error: 'Update failed. Please try again' }, { status: 500 });
   }
 }
