@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { TEAMS, PLAYERS, ALL_PLAYERS } from '@/lib/data';
 import { Team, Player, AuctionStatus, PlayerProfile, TEAM_SIZE } from '@/lib/types';
-import IntelligencePanel from '@/components/IntelligencePanel';
 
 // Confirmation Modal Component
 function ConfirmModal({
@@ -202,10 +201,27 @@ interface AdminState {
   usedJokers?: Record<string, string>; // teamId -> playerId
 }
 
+const AUTH_STORAGE_KEY = 'admin:authenticated';
+const PIN_STORAGE_KEY = 'admin:pin';
+
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
+
+  // Load auth state from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+      const savedPin = localStorage.getItem(PIN_STORAGE_KEY);
+      if (savedAuth === 'true' && savedPin) {
+        setIsAuthenticated(true);
+        setPin(savedPin);
+      }
+    } catch {
+      // localStorage not available (e.g., private browsing)
+    }
+  }, []);
 
   const [state, setState] = useState<AdminState | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
@@ -213,7 +229,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Player profiles state
-  const [activeTab, setActiveTab] = useState<'auction' | 'profiles' | 'intelligence'>('auction');
+  const [activeTab, setActiveTab] = useState<'auction' | 'profiles'>('auction');
   const [profiles, setProfiles] = useState<Record<string, PlayerProfile>>({});
   const [editingPlayer, setEditingPlayer] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState('');
@@ -325,10 +341,17 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin, action: 'VERIFY' }),
       });
-      
+
       if (res.ok) {
         setIsAuthenticated(true);
         setPinError(false);
+        // Save to localStorage
+        try {
+          localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+          localStorage.setItem(PIN_STORAGE_KEY, pin);
+        } catch {
+          // localStorage not available
+        }
       } else {
         setPinError(true);
         setPin('');
@@ -337,6 +360,17 @@ export default function AdminPage() {
       setPinError(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setPin('');
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(PIN_STORAGE_KEY);
+    } catch {
+      // localStorage not available
     }
   };
 
@@ -547,23 +581,6 @@ export default function AdminPage() {
     p.name.toLowerCase().includes(profileSearch.toLowerCase())
   );
 
-  // Build auction history for intelligence panel
-  const auctionHistory = useMemo(() => {
-    return (state?.soldPlayers || []).map(playerId => {
-      const player = ALL_PLAYERS.find(p => p.id === playerId);
-      const teamId = Object.entries(state?.rosters || {}).find(([_, roster]) => 
-        roster.includes(playerId)
-      )?.[0];
-      return {
-        playerId,
-        teamId: teamId || '',
-        price: state?.soldPrices?.[playerId] || 0,
-        timestamp: state?.lastUpdate || Date.now(),
-        playerRole: player?.role,
-      };
-    });
-  }, [state?.soldPlayers, state?.rosters, state?.soldPrices, state?.lastUpdate]);
-
   // PIN Login Screen
   if (!isAuthenticated) {
     return (
@@ -666,7 +683,7 @@ export default function AdminPage() {
                 👥 View All
               </Link>
               <button
-                onClick={() => setIsAuthenticated(false)}
+                onClick={handleLogout}
                 className="text-sm text-white/50 hover:text-white"
               >
                 Logout
@@ -907,21 +924,6 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
-
-            {/* Intelligence Tab */}
-            <button
-              onClick={() => setActiveTab(activeTab === 'intelligence' ? 'auction' : 'intelligence')}
-              className={`w-full glass rounded-xl p-3 text-left transition-colors ${
-                activeTab === 'intelligence' ? 'bg-purple-500/20 border border-purple-500/30' : ''
-              }`}
-            >
-              <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-1">
-                🧠 Intelligence
-              </h3>
-              <p className="text-xs text-white/40">
-                {activeTab === 'intelligence' ? '← Back to Auction' : 'Auction advisor & predictions'}
-              </p>
-            </button>
 
             {/* Profiles Tab */}
             <button
@@ -1233,17 +1235,6 @@ export default function AdminPage() {
                   </div>
                 )}
               </>
-            )}
-
-            {/* INTELLIGENCE TAB */}
-            {activeTab === 'intelligence' && state && (
-              <IntelligencePanel
-                teams={state.teams}
-                currentPlayer={state.currentPlayer}
-                soldPlayers={state.soldPlayers || []}
-                soldPrices={state.soldPrices || {}}
-                auctionHistory={auctionHistory}
-              />
             )}
 
             {/* PROFILES TAB */}

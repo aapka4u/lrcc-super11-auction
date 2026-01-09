@@ -242,6 +242,13 @@ curl -X POST https://draftcast.app/api/state \
 
 ## UI Components Details
 
+### Landing Page (app/page.tsx)
+- Modern glassmorphism design with animated background orbs
+- Gradient text for "DraftCast" branding
+- "LIVE TODAY" pulsing badge on active events
+- Staggered fade-in animations
+- Logo in `public/logo.png` used for favicon
+
 ### AuctionStatus.tsx
 Displays different states:
 - **IDLE**: "Waiting for Auctioneer" message
@@ -263,6 +270,7 @@ Shows team information:
 - **Soundboard**: Sold hammer and new player sound effects
 - **Pause Control**: Custom message, optional duration
 - **Team Rosters**: Budget bars, spent amounts, max bid limits
+- **Auth Persistence**: Login state saved to localStorage (no re-login on refresh)
 
 ## Player Image Handling
 
@@ -297,6 +305,7 @@ The intelligence panel (`/lrccsuper11/intelligence`) provides real-time bid pred
 ### Password
 - Password: `boomgaard`
 - Persists in localStorage (no re-login on refresh)
+- Accessible via dedicated URL only (removed from admin sidebar)
 
 ### Key Algorithms (lib/intelligence.ts)
 - `calculateBidLikelihood()`: Weighs role need, budget, scarcity, Super11 constraint

@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   title: 'DraftCast - Live Auction Broadcast',
   description: 'Real-time broadcast platform for sports drafts and auctions',
   metadataBase: new URL('https://draftcast.app'),
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
   alternates: {
     canonical: 'https://draftcast.app',
   },
