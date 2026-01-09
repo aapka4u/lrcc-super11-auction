@@ -2,6 +2,11 @@ import { Player, Team, BASE_PRICES, TEAM_SIZE } from './types';
 import { PLAYERS } from './data';
 import { calculateMaxBid } from './data';
 
+// Round price to nearest 100 (bid increments are in 100s)
+function roundTo100(price: number): number {
+  return Math.round(price / 100) * 100;
+}
+
 // Team preference data (stored in KV/localStorage, manually entered)
 export interface TeamPreference {
   teamId: string;
@@ -563,25 +568,25 @@ export function calculateBidLikelihood(
 
     if (similarRemaining >= 2) {
       // Multiple alternatives available - be conservative
-      recommendedWalkAway = Math.floor(team.maxBid * conservativeMultiplier);
+      recommendedWalkAway = roundTo100(team.maxBid * conservativeMultiplier);
       walkAwayReason = `${similarRemaining} similar ${isAplusPlayer ? 'star' : 'base'} players still available`;
     } else if (similarRemaining === 1) {
       // One alternative left - moderate
-      recommendedWalkAway = Math.floor(team.maxBid * moderateMultiplier);
+      recommendedWalkAway = roundTo100(team.maxBid * moderateMultiplier);
       walkAwayReason = `Only 1 similar ${isAplusPlayer ? 'star' : 'base'} player left`;
     } else if (similarRemaining === 0) {
       // No alternatives! Adjust based on urgency
       if (roleGap.urgency >= 70) {
         // High urgency + no alternatives = go aggressive
-        recommendedWalkAway = Math.floor(team.maxBid * aggressiveMultiplier);
+        recommendedWalkAway = roundTo100(team.maxBid * aggressiveMultiplier);
         walkAwayReason = `Last ${isAplusPlayer ? 'star ' : ''}${playerRole} available!`;
       } else if (roleGap.urgency >= 40) {
         // Medium urgency + no alternatives = moderate aggression
-        recommendedWalkAway = Math.floor(team.maxBid * moderateMultiplier);
+        recommendedWalkAway = roundTo100(team.maxBid * moderateMultiplier);
         walkAwayReason = `No more similar players in pool (urgency: ${roleGap.urgency}%)`;
       } else {
         // Low urgency = team already covered, but still last chance
-        recommendedWalkAway = Math.floor(team.maxBid * conservativeMultiplier);
+        recommendedWalkAway = roundTo100(team.maxBid * conservativeMultiplier);
         walkAwayReason = `Last of type but low urgency - be cautious`;
       }
     }
@@ -599,25 +604,25 @@ export function calculateBidLikelihood(
   }
   
   if (preferences?.conditionalPreferences?.[currentPlayer.id]?.maxPriceMultiplier) {
-    recommendedWalkAway = Math.floor(recommendedWalkAway * preferences.conditionalPreferences[currentPlayer.id]!.maxPriceMultiplier!);
+    recommendedWalkAway = roundTo100(recommendedWalkAway * preferences.conditionalPreferences[currentPlayer.id]!.maxPriceMultiplier!);
     walkAwayReason = 'Conditional target - price restraint';
   }
   
   // Adjust based on behavior risk tolerance
   if (preferences?.riskTolerance === 'low') {
-    recommendedWalkAway = Math.floor(recommendedWalkAway * 0.9);
+    recommendedWalkAway = roundTo100(recommendedWalkAway * 0.9);
   } else if (preferences?.riskTolerance === 'high') {
-    recommendedWalkAway = Math.floor(recommendedWalkAway * 1.05);
+    recommendedWalkAway = roundTo100(recommendedWalkAway * 1.05);
   }
 
   // Adjust for player availability (reduce walk-away for less available players)
   if (currentPlayer.availability === 'tentative') {
-    recommendedWalkAway = Math.floor(recommendedWalkAway * 0.75);
+    recommendedWalkAway = roundTo100(recommendedWalkAway * 0.75);
     walkAwayReason = 'Tentative - high risk, pay less';
   } else if (currentPlayer.availability === 'till_11') {
-    recommendedWalkAway = Math.floor(recommendedWalkAway * 0.85);
+    recommendedWalkAway = roundTo100(recommendedWalkAway * 0.85);
   } else if (currentPlayer.availability === 'till_12') {
-    recommendedWalkAway = Math.floor(recommendedWalkAway * 0.90);
+    recommendedWalkAway = roundTo100(recommendedWalkAway * 0.90);
   }
 
   // Final constraints: must be between basePrice and maxBid
@@ -764,8 +769,8 @@ export function calculateStrategicRecommendation(
       // Game-theoretic insight: push to 70-80% of their max, not 85%
       // This leaves them room to "win" while still draining budget
       const pushMultiplier = opponentIsMustGet ? 0.80 : 0.70; // Higher if they're truly constrained
-      const idealPushPrice = Math.floor(mostDesperate.prediction.maxBid * pushMultiplier);
-      targetPrice = Math.min(idealPushPrice, yourMaxBid - 100); // Stay 100 below your max
+      const idealPushPrice = roundTo100(mostDesperate.prediction.maxBid * pushMultiplier);
+      targetPrice = roundTo100(Math.min(idealPushPrice, yourMaxBid - 100)); // Stay 100 below your max
 
       if (targetPrice >= basePrice + 500) { // Only worth pushing if meaningful
         action = 'push_price';
@@ -788,8 +793,8 @@ export function calculateStrategicRecommendation(
     } else if (competitorDesperation === 'medium' && mostDesperate.prediction.confidence === 'medium') {
       // Medium desperation - RISKY to push (they might drop, leaving you stuck)
       // Game theory: only push if damage is worth the risk
-      const idealPushPrice = Math.floor(mostDesperate.prediction.maxBid * 0.60); // More conservative
-      targetPrice = Math.min(idealPushPrice, yourMaxBid - 200); // Larger safety margin
+      const idealPushPrice = roundTo100(mostDesperate.prediction.maxBid * 0.60); // More conservative
+      targetPrice = roundTo100(Math.min(idealPushPrice, yourMaxBid - 200)); // Larger safety margin
 
       if (targetPrice >= basePrice + 500) {
         action = 'push_price';

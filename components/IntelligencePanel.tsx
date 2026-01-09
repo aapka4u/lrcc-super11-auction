@@ -23,6 +23,7 @@ interface IntelligencePanelProps {
 
 const INTELLIGENCE_PASSWORD = 'boomgaard';
 const PREFERENCE_STORAGE_KEY = 'intelligence:preferences';
+const AUTH_STORAGE_KEY = 'intelligence:authenticated';
 
 // Helper functions for Simple Mode
 function getTopThreats(predictions: BidPrediction[], yourTeamId: string, limit: number = 2): BidPrediction[] {
@@ -97,14 +98,22 @@ export default function IntelligencePanel({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
-  
+
   const [preferences, setPreferences] = useState<Record<string, TeamPreference>>({});
   const [editingPreference, setEditingPreference] = useState<string | null>(null);
   const [preferenceInput, setPreferenceInput] = useState('');
   const [editingAvoidList, setEditingAvoidList] = useState<string | null>(null);
   const [avoidListInput, setAvoidListInput] = useState('');
   const [simpleMode, setSimpleMode] = useState(true); // Default to simple mode for mobile
-  
+
+  // Load auth state from localStorage on mount
+  useEffect(() => {
+    const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (savedAuth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   // Load preferences from localStorage
   useEffect(() => {
     const saved = localStorage.getItem(PREFERENCE_STORAGE_KEY);
@@ -268,10 +277,17 @@ export default function IntelligencePanel({
       setIsAuthenticated(true);
       setPasswordError(false);
       setPassword('');
+      // Persist auth to localStorage
+      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
     } else {
       setPasswordError(true);
       setPassword('');
     }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
   };
   
   const remainingPlayers = PLAYERS.filter(p => !soldPlayers.includes(p.id));
@@ -341,7 +357,7 @@ export default function IntelligencePanel({
               {simpleMode ? '⚡ Simple' : '📊 Detailed'}
             </button>
             <button
-              onClick={() => setIsAuthenticated(false)}
+              onClick={handleLogout}
               className="text-sm text-white/50 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
             >
               Logout
