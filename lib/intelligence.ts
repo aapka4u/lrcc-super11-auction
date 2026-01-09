@@ -178,16 +178,36 @@ export function calculateBidLikelihood(
 ): BidPrediction {
   // HARD CONSTRAINT: Team is full or cannot afford base price
   const basePrice = BASE_PRICES[currentPlayer.category as keyof typeof BASE_PRICES] || BASE_PRICES.BASE;
-  if (team.playersNeeded <= 0 || team.maxBid < basePrice) {
+  const totalPlayers = 2 + team.roster.length; // C + VC + roster
+
+  if (team.playersNeeded <= 0) {
     return {
       teamId: team.id,
       teamName: team.name,
       likelihood: 0,
       confidence: 'high',
-      reasoning: team.playersNeeded <= 0 ? ['Team is full'] : ['Cannot afford base price'],
+      reasoning: [`🚫 Team is full (${totalPlayers}/8 players)`],
       maxBid: team.maxBid,
       recommendedWalkAway: 0,
-      walkAwayReason: 'Not possible',
+      walkAwayReason: 'Team complete - cannot bid',
+    };
+  }
+
+  if (team.maxBid < basePrice) {
+    const reserveNeeded = Math.max(0, team.playersNeeded - 1) * BASE_PRICES.BASE;
+    return {
+      teamId: team.id,
+      teamName: team.name,
+      likelihood: 0,
+      confidence: 'high',
+      reasoning: [
+        `🚫 Cannot afford base price (₹${basePrice.toLocaleString()})`,
+        `Max bid: ₹${team.maxBid.toLocaleString()} (need ₹${reserveNeeded.toLocaleString()} reserve for ${team.playersNeeded - 1} more picks)`,
+        `${totalPlayers}/8 players, ₹${team.remainingBudget.toLocaleString()} remaining`
+      ],
+      maxBid: team.maxBid,
+      recommendedWalkAway: 0,
+      walkAwayReason: 'Budget constraint - must reserve for future picks',
     };
   }
   
@@ -208,10 +228,13 @@ export function calculateBidLikelihood(
   const gaps = calculateRoleGaps(team, remainingPlayers);
   const playerRole = currentPlayer.role || '';
   const roleGap = gaps.find(g => g.role === playerRole);
-  
+
   let likelihood = 0.3; // Base likelihood
   let confidence: 'low' | 'medium' | 'high' = 'low';
   const reasoning: string[] = [];
+
+  // Add team status context
+  reasoning.push(`📊 ${totalPlayers}/8 players | Max bid: ₹${team.maxBid.toLocaleString()}`);
   
   // Factor 1: Role Need (0-0.4 weight)
   if (roleGap) {

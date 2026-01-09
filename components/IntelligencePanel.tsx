@@ -476,6 +476,74 @@ export default function IntelligencePanel({
         </div>
       )}
       
+      {/* Team Budget & Constraints */}
+      <div className="glass rounded-2xl p-6">
+        <h3 className="text-lg font-bold text-white mb-2">💰 Team Budget Constraints</h3>
+        <p className="text-xs text-white/50 mb-4">
+          Max Bid = Remaining Budget - (Players Needed × ₹1,000 base price). Teams must reserve enough for remaining picks.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {teams.map(team => {
+            const totalPlayers = 2 + team.roster.length; // C + VC + roster
+            const playersNeeded = 8 - totalPlayers;
+            const reserveNeeded = Math.max(0, playersNeeded - 1) * 1000; // Reserve for future picks at base
+            const isFull = playersNeeded <= 0;
+            const isBudgetTight = team.maxBid < 1500;
+
+            return (
+              <div
+                key={team.id}
+                className={`glass rounded-xl p-3 border ${isFull ? 'border-green-500/30 bg-green-500/5' : isBudgetTight ? 'border-orange-500/30 bg-orange-500/5' : 'border-white/10'}`}
+                style={{ borderLeftColor: team.color, borderLeftWidth: '4px' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold text-white text-sm">{team.name.split(' ')[1]}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${isFull ? 'bg-green-500/20 text-green-300' : 'bg-white/10 text-white/60'}`}>
+                    {totalPlayers}/8 players
+                  </span>
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Budget:</span>
+                    <span className="text-white font-mono">₹{team.budget.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Spent:</span>
+                    <span className="text-red-400 font-mono">₹{team.spent.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Remaining:</span>
+                    <span className="text-green-400 font-mono">₹{team.remainingBudget.toLocaleString()}</span>
+                  </div>
+                  {!isFull && (
+                    <>
+                      <div className="flex justify-between text-white/40">
+                        <span>Reserve ({playersNeeded - 1} × ₹1k):</span>
+                        <span className="font-mono">-₹{reserveNeeded.toLocaleString()}</span>
+                      </div>
+                      <div className="border-t border-white/10 pt-1 mt-1">
+                        <div className="flex justify-between">
+                          <span className="text-yellow-300 font-semibold">Max Bid:</span>
+                          <span className={`font-mono font-bold ${team.maxBid < 1000 ? 'text-red-400' : team.maxBid < 2000 ? 'text-orange-400' : 'text-yellow-300'}`}>
+                            ₹{team.maxBid.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  {isFull && (
+                    <div className="text-center text-green-400 font-semibold mt-1">
+                      ✓ Team Complete
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Team Gaps Analysis */}
       <div className="glass rounded-2xl p-6">
         <h3 className="text-lg font-bold text-white mb-4">📊 Team Role Coverage</h3>
@@ -483,7 +551,7 @@ export default function IntelligencePanel({
           {teams.map(team => {
             const gaps = analysis.teamGaps[team.id] || [];
             const criticalGaps = gaps.filter(g => g.urgency >= 70);
-            
+
             return (
               <div
                 key={team.id}
@@ -504,14 +572,14 @@ export default function IntelligencePanel({
                     </span>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   {gaps.map(gap => {
                     const urgencyColor =
                       gap.urgency >= 70 ? 'text-red-400' :
                       gap.urgency >= 40 ? 'text-yellow-400' :
                       'text-green-400';
-                    
+
                     return (
                       <div key={gap.role} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
