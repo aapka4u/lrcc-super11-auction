@@ -404,6 +404,22 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case 'ADD_PLAYER': {
+        // Add player directly to a team (admin backend correction)
+        const { playerId: addPlayerId, teamId: addTeamId, price: addPrice } = body;
+        if (!addPlayerId || !addTeamId || addPrice === undefined) {
+          return NextResponse.json({
+            error: 'ADD_PLAYER requires playerId, teamId, price'
+          }, { status: 400 });
+        }
+
+        state.rosters[addTeamId] = [...(state.rosters[addTeamId] || []), addPlayerId];
+        state.soldPlayers = [...(state.soldPlayers || []), addPlayerId];
+        state.soldPrices[addPlayerId] = addPrice;
+        state.teamSpent[addTeamId] = (state.teamSpent[addTeamId] || 0) + addPrice;
+        break;
+      }
+
       case 'RESET':
         // Full reset
         if (!confirmReset) {
