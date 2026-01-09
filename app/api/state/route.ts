@@ -108,6 +108,7 @@ export async function GET() {
       teams: teamsWithRosters,
       lastUpdate: auctionState.lastUpdate,
       soldCount: auctionState.soldPlayers.length,
+      soldPlayers: auctionState.soldPlayers,
       totalPlayers: PLAYERS.length,
       pauseMessage: auctionState.pauseMessage,
       pauseUntil: auctionState.pauseUntil,
