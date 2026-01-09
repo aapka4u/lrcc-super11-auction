@@ -178,8 +178,8 @@ export async function POST(request: NextRequest) {
         if (!teamId || !state.currentPlayerId) {
           return NextResponse.json({ error: 'Team ID required' }, { status: 400 });
         }
-        if (typeof soldPrice !== 'number' || soldPrice < 0) {
-          return NextResponse.json({ error: 'Valid sold price required' }, { status: 400 });
+        if (typeof soldPrice !== 'number' || soldPrice <= 0) {
+          return NextResponse.json({ error: 'Valid sold price required (must be > 0)' }, { status: 400 });
         }
         // Validate bid is multiple of 100
         if (soldPrice % 100 !== 0) {
@@ -259,6 +259,11 @@ export async function POST(request: NextRequest) {
           ? Math.floor((Date.now() - state.auctionStartTime) / 1000)
           : 0;
         state.biddingDurations[state.currentPlayerId] = biddingDuration;
+
+        // Idempotency check: prevent double-click from adding player twice
+        if (state.rosters[teamId]?.includes(state.currentPlayerId)) {
+          return NextResponse.json({ success: true, message: 'Already processed' });
+        }
 
         state.status = 'SOLD';
         state.soldToTeamId = teamId;
