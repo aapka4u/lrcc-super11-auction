@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { TEAMS, PLAYERS, ALL_PLAYERS } from '@/lib/data';
 import { Team, Player, AuctionStatus, PlayerProfile, TEAM_SIZE } from '@/lib/types';
@@ -201,8 +201,9 @@ interface AdminState {
   usedJokers?: Record<string, string>; // teamId -> playerId
 }
 
-const AUTH_STORAGE_KEY = 'admin:authenticated';
-const PIN_STORAGE_KEY = 'admin:pin';
+// Keys changed to invalidate old sessions
+const AUTH_STORAGE_KEY = 'admin:auth:v2';
+const PIN_STORAGE_KEY = 'admin:pin:v2';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -256,6 +257,9 @@ export default function AdminPage() {
   const hammerAudioRef = useRef<HTMLAudioElement | null>(null);
   const bellAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Abort controller for cancelling stale requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Initialize audio on mount
   useEffect(() => {
     hammerAudioRef.current = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-judge-gavel-hit-530.mp3');
@@ -281,14 +285,33 @@ export default function AdminPage() {
   }, []);
 
   const fetchState = useCallback(async () => {
+    // Cancel previous request to prevent pileup
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    // Set timeout to abort after 8 seconds
+    const timeoutId = setTimeout(() => {
+      abortControllerRef.current?.abort();
+    }, 8000);
+
     try {
-      const res = await fetch('/api/state', { cache: 'no-store' });
+      const res = await fetch('/api/state', {
+        cache: 'no-store',
+        signal: abortControllerRef.current.signal,
+      });
       if (res.ok) {
         const data = await res.json();
         setState(data);
       }
     } catch (err) {
-      console.error('Error fetching state:', err);
+      // Ignore abort errors (expected when cancelling stale requests)
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error('Error fetching state:', err);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, []);
 
@@ -308,8 +331,8 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchState();
       fetchProfiles();
-      // Keep admin polling at 2 seconds for responsiveness
-      const interval = setInterval(fetchState, 2000);
+      // Poll every 3 seconds (reduced from 2s to prevent request pileup)
+      const interval = setInterval(fetchState, 3000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, fetchState, fetchProfiles]);
@@ -405,14 +428,18 @@ export default function AdminPage() {
     }
   };
 
-  const soldPlayerIds = state?.teams.flatMap(t => t.roster.map(p => p.id)) || [];
-  const availablePlayers = PLAYERS.filter(p => !soldPlayerIds.includes(p.id));
-  const aplusPlayers = availablePlayers.filter(p => p.category === 'APLUS');
-  const basePlayers = availablePlayers.filter(p => p.category === 'BASE');
-  const unsoldPlayerIds = state?.unsoldPlayers || [];
-  const unsoldPlayers = unsoldPlayerIds
-    .map(id => PLAYERS.find(p => p.id === id))
-    .filter((p): p is Player => p !== undefined);
+  // Memoize expensive player computations to prevent re-calculation on every render
+  const { soldPlayerIds, availablePlayers, aplusPlayers, basePlayers, unsoldPlayers } = useMemo(() => {
+    const soldIds = state?.teams.flatMap(t => t.roster.map(p => p.id)) || [];
+    const available = PLAYERS.filter(p => !soldIds.includes(p.id));
+    const aplus = available.filter(p => p.category === 'APLUS');
+    const base = available.filter(p => p.category === 'BASE');
+    const unsoldIds = state?.unsoldPlayers || [];
+    const unsold = unsoldIds
+      .map(id => PLAYERS.find(p => p.id === id))
+      .filter((p): p is Player => p !== undefined);
+    return { soldPlayerIds: soldIds, availablePlayers: available, aplusPlayers: aplus, basePlayers: base, unsoldPlayers: unsold };
+  }, [state?.teams, state?.unsoldPlayers]);
 
   // Random player selection
   const handleRandomPlayer = async () => {
