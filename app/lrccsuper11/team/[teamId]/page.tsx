@@ -61,7 +61,7 @@ export default function TeamPage() {
       }
     };
     fetchState();
-    const interval = setInterval(fetchState, 5000);
+    const interval = setInterval(fetchState, 60000); // 60s - auction is over
     return () => clearInterval(interval);
   }, [teamId]);
 

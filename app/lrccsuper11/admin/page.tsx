@@ -331,8 +331,8 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchState();
       fetchProfiles();
-      // Poll every 3 seconds (reduced from 2s to prevent request pileup)
-      const interval = setInterval(fetchState, 3000);
+      // Poll every 60 seconds - auction is over
+      const interval = setInterval(fetchState, 60000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, fetchState, fetchProfiles]);

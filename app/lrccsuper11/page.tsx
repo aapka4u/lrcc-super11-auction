@@ -537,7 +537,7 @@ export default function Home() {
   }, []);
 
   const { data: state, error: swrError } = useSWR<PublicState>('/api/state', fetcher, {
-    refreshInterval: 1000,
+    refreshInterval: 60000, // 60 seconds - auction is over
     keepPreviousData: true,
     onSuccess: () => setLastRefresh(new Date()),
   });
