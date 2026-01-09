@@ -11,6 +11,7 @@ A real-time auction display board for cricket player auctions. Viewers on mobile
 - **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
 - **All Players**: https://draftcast.app/lrccsuper11/players
 - **Broadcast Mode**: https://draftcast.app/lrccsuper11/broadcast
+- **Intelligence Panel**: https://draftcast.app/lrccsuper11/intelligence (Password: boomgaard)
 - **GitHub**: https://github.com/aapka4u/lrcc-super11-auction
 
 ## Features
@@ -32,8 +33,12 @@ A real-time auction display board for cricket player auctions. Viewers on mobile
   - ⚡ All-rounder
   - 🧤 WK-Batsman
 - **Pause/Resume**: Admin can pause auction with custom message and duration
-- **Auto-refresh**: Updates every 2 seconds
+- **Joker Card**: Each team has one joker to claim a player at base price
+- **Intelligence Panel**: Bid predictions, threat analysis, strategic recommendations
+- **Super11 Constraint**: Each team must have 3 Super11 players (tracked in intelligence)
+- **Auto-refresh**: Updates every 1-2 seconds
 - **Mobile-friendly**: Works on all devices
+- **Price Validation**: All bids must be multiples of ₹100
 
 ## Quick Deploy (30 minutes)
 
@@ -158,6 +163,7 @@ app/
 │   ├── page.tsx          # Public auction display
 │   ├── admin/page.tsx    # Admin control panel
 │   ├── broadcast/page.tsx # Full-screen broadcast display
+│   ├── intelligence/page.tsx # Bid prediction panel
 │   └── players/page.tsx  # All players list
 └── api/
     ├── state/route.ts    # Auction state API (GET/POST)
@@ -167,11 +173,13 @@ components/
 ├── AuctionStatus.tsx     # Live auction status display
 ├── TeamCard.tsx          # Team roster card with budgets
 ├── TeamTeaser.tsx        # Team reveal teaser animation
-└── TeamStoryVideo.tsx    # Team story video generation
+├── TeamStoryVideo.tsx    # Team story video generation
+└── IntelligencePanel.tsx # Bid prediction and strategy
 
 lib/
 ├── data.ts               # Player & team data, calculateMaxBid()
-└── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
+├── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
+└── intelligence.ts       # Bid prediction algorithms
 ```
 
 ## Local Development

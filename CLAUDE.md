@@ -12,6 +12,7 @@ A real-time cricket player auction display system for a local cricket league. Th
 - **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
 - **All Players**: https://draftcast.app/lrccsuper11/players
 - **Broadcast Mode**: https://draftcast.app/lrccsuper11/broadcast (full-screen display)
+- **Intelligence Panel**: https://draftcast.app/lrccsuper11/intelligence (Password: boomgaard)
 - **GitHub**: https://github.com/aapka4u/lrcc-super11-auction
 
 ## Tech Stack
@@ -33,6 +34,7 @@ app/
 │   ├── page.tsx          # Public auction display (main viewer page)
 │   ├── admin/page.tsx    # Admin control panel (PIN protected)
 │   ├── broadcast/page.tsx # Full-screen broadcast display
+│   ├── intelligence/page.tsx # Bid prediction intelligence panel
 │   └── players/page.tsx  # All players list with search/filter
 └── api/
     ├── state/route.ts    # Main auction state API (GET/POST)
@@ -42,11 +44,13 @@ components/
 ├── AuctionStatus.tsx     # Live auction status display (IDLE/LIVE/SOLD/PAUSED)
 ├── TeamCard.tsx          # Team roster card with budget info
 ├── TeamTeaser.tsx        # Team reveal teaser animation
-└── TeamStoryVideo.tsx    # Team story video generation
+├── TeamStoryVideo.tsx    # Team story video generation
+└── IntelligencePanel.tsx # Auction bid prediction and strategy recommendations
 
 lib/
 ├── data.ts               # Player & team static data, calculateMaxBid()
-└── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
+├── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
+└── intelligence.ts       # Bid prediction engine, role gap analysis, strategic recommendations
 ```
 
 ## Key Data Structures
@@ -152,8 +156,16 @@ export const calculateMaxBid = (
 ### Validation Rules (enforced in API)
 1. Sold price must be >= base price for player's category
 2. Sold price must be <= team's max bid
-3. Team roster cannot exceed TEAM_SIZE - 2 (6 auction picks)
-4. Player cannot be sold twice
+3. Sold price must be a multiple of ₹100
+4. Sold price must be > 0
+5. Team roster cannot exceed TEAM_SIZE - 2 (6 auction picks)
+6. Player cannot be sold twice (idempotent check prevents double-click issues)
+
+### Super11 Constraint
+Each team must have exactly 3 Super11 players:
+- 1 from Captain/Vice-Captain (already assigned)
+- 2 from auction pool
+- Intelligence panel tracks this and warns when constraint is at risk
 
 ## API Endpoints
 
@@ -167,11 +179,12 @@ Returns public auction state including:
 Admin actions (requires PIN):
 - `VERIFY` - Check PIN validity
 - `START_AUCTION` - Put player up for bidding
-- `SOLD` - Mark player sold (requires teamId, soldPrice)
-- `UNSOLD` - Skip player
+- `SOLD` - Mark player sold (requires teamId, soldPrice - must be multiple of 100)
+- `UNSOLD` - Skip player (marks as unsold, can be re-auctioned)
 - `CLEAR` - Ready for next player
 - `PAUSE` - Pause auction (optional message, duration)
 - `UNPAUSE` - Resume auction
+- `JOKER` - Activate joker card for a team (one per team, claims at base price)
 - `RESET` - Full reset (requires confirmReset: true)
 
 ### GET /api/players
@@ -263,9 +276,33 @@ Images are stored in KV as base64 strings or external URLs. The flow:
 
 1. **Player Lookup**: Use `findPlayer()` helper in route.ts - searches both PLAYERS and TEAM_LEADERS arrays
 2. **Profile Merging**: Always merge KV profile data with static player data for images
-3. **Budget Calculation**: The GET endpoint calculates and returns maxBid for each team in real-time
-4. **Auto-refresh**: Public page polls every 2 seconds, admin every 2 seconds
+3. **Budget Calculation**: The GET endpoint calculates and returns maxBid for each team in real-time (rounded to nearest 100)
+4. **Auto-refresh**: Public page polls every 1 second, admin every 2 seconds
 5. **Non-null assertions**: API route uses `state!` in callbacks where TypeScript can't infer non-null
+6. **Price Rounding**: All prices must be multiples of ₹100 (enforced in API and UI)
+7. **Idempotency**: SOLD action checks if player already in roster to prevent double-click issues
+
+## Intelligence Panel
+
+The intelligence panel (`/lrccsuper11/intelligence`) provides real-time bid predictions:
+
+### Features
+- **Bid Likelihood**: Predicts which teams will bid on current player (0-100%)
+- **Role Gap Analysis**: Shows which roles each team needs
+- **Super11 Tracking**: Warns when teams are at risk of not meeting 3-Super11 constraint
+- **Strategic Recommendations**: BID/PUSH/WAIT/SKIP actions with walk-away prices
+- **Threat Detection**: Highlights teams in MUST GET mode
+- **Simple/Detailed Modes**: Mobile-optimized simple mode vs full analysis
+
+### Password
+- Password: `boomgaard`
+- Persists in localStorage (no re-login on refresh)
+
+### Key Algorithms (lib/intelligence.ts)
+- `calculateBidLikelihood()`: Weighs role need, budget, scarcity, Super11 constraint
+- `calculateStrategicRecommendation()`: Game-theoretic PUSH strategy for non-interested players
+- `analyzeRoleGaps()`: Identifies missing roles per team
+- `analyzeClubGaps()`: Tracks Super11 requirement (3 per team)
 
 ## Troubleshooting
 
