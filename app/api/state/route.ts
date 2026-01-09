@@ -335,13 +335,16 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'RANDOM':
-        // Get random next player based on priority: Star → League → Unsold
-        const remainingPlayers = PLAYERS.filter(p => !state!.soldPlayers.includes(p.id));
+        // Get random next player based on priority: Star → League → Unsold (at the end only)
         const unsoldPlayers = state!.unsoldPlayers || [];
+        // Exclude both sold AND unsold players from regular pool - unsold only come at the end
+        const remainingPlayers = PLAYERS.filter(p =>
+          !state!.soldPlayers.includes(p.id) && !unsoldPlayers.includes(p.id)
+        );
         const unsoldPlayerObjects = unsoldPlayers
           .map(id => PLAYERS.find(p => p.id === id))
           .filter((p): p is Player => p !== undefined);
-        
+
         const starPlayers = remainingPlayers.filter(p => p.category === 'APLUS');
         const leaguePlayers = remainingPlayers.filter(p => p.category === 'BASE');
         
