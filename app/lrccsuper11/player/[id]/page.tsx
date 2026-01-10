@@ -1,6 +1,18 @@
 import { Metadata } from 'next';
+import { Suspense } from 'react';
 import { ALL_PLAYERS } from '@/lib/data';
 import PlayerProfile from './PlayerProfile';
+
+function PlayerProfileLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-white/50">Loading player...</p>
+      </div>
+    </div>
+  );
+}
 
 interface PageProps {
   params: { id: string };
@@ -63,5 +75,9 @@ export async function generateStaticParams() {
 }
 
 export default function PlayerPage() {
-  return <PlayerProfile />;
+  return (
+    <Suspense fallback={<PlayerProfileLoader />}>
+      <PlayerProfile />
+    </Suspense>
+  );
 }

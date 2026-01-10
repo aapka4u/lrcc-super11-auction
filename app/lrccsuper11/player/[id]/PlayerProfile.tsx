@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { ALL_PLAYERS, TEAMS } from '@/lib/data';
 import { Player, Team } from '@/lib/types';
 
@@ -283,7 +283,9 @@ interface AuctionState {
 
 export default function PlayerProfile() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const playerId = params.id as string;
+  const autoOpenUpload = searchParams.get('upload') === 'true';
 
   const [player, setPlayer] = useState<Player | null>(null);
   const [playerImage, setPlayerImage] = useState<string | null>(null);
@@ -291,6 +293,7 @@ export default function PlayerProfile() {
   const [soldPrice, setSoldPrice] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
 
   const fetchData = useCallback(async () => {
     // Find player from static data
@@ -351,6 +354,14 @@ export default function PlayerProfile() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-open upload modal when ?upload=true is in URL
+  useEffect(() => {
+    if (autoOpenUpload && player && !isLoading && !hasAutoOpened) {
+      setShowUploadModal(true);
+      setHasAutoOpened(true);
+    }
+  }, [autoOpenUpload, player, isLoading, hasAutoOpened]);
 
   const handleUploadSuccess = () => {
     // Refresh data after successful upload

@@ -9,13 +9,6 @@ interface TeamProfile {
   updatedAt?: number;
 }
 
-// Generate password: vicecaptain name (lowercase, no spaces) + captain name (lowercase, no spaces)
-function generateTeamPassword(team: typeof TEAMS[0]): string {
-  const vcName = team.viceCaptain.toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
-  const captainName = team.captain.toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
-  return vcName + captainName;
-}
-
 // GET - fetch all team profiles
 export async function GET() {
   try {
@@ -27,22 +20,16 @@ export async function GET() {
   }
 }
 
-// POST - update team profile (logo upload)
+// POST - update team profile (logo upload) - No authentication required
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { teamId, password, logo } = body;
+    const { teamId, logo } = body;
 
     // Validate team exists
     const team = TEAMS.find(t => t.id === teamId);
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
-    }
-
-    // Validate password
-    const correctPassword = generateTeamPassword(team);
-    if (password?.toLowerCase() !== correctPassword) {
-      return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
 
     // Validate logo size (base64 string)

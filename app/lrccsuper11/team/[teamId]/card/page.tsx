@@ -64,11 +64,19 @@ export default function TeamCardPage() {
     );
   }
 
-  // Get roster players
+  // Get roster players and sort by role: Batsman/WK-Batsman -> All-rounder -> Bowler
+  const roleOrder: Record<string, number> = {
+    'Batsman': 1,
+    'WK-Batsman': 2,
+    'All-rounder': 3,
+    'Bowler': 4,
+  };
+
   const rosterPlayerIds = auctionState?.rosters[teamId] || [];
   const rosterPlayers = rosterPlayerIds
     .map(id => PLAYERS.find(p => p.id === id))
-    .filter((p): p is Player => p !== undefined);
+    .filter((p): p is Player => p !== undefined)
+    .sort((a, b) => (roleOrder[a.role || ''] || 99) - (roleOrder[b.role || ''] || 99));
 
   // Get captain and VC
   const captain = TEAM_LEADERS.find(p => p.teamId === teamId && p.category === 'CAPTAIN');
@@ -197,11 +205,14 @@ export default function TeamCardPage() {
                   <span className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-white/50 text-xs">
                     {index + 1}
                   </span>
+                  <span className="text-sm">{getRoleIcon(player.role)}</span>
                   <span className="text-white font-medium flex-1">{player.name}</span>
                   {player.category === 'APLUS' && (
                     <span className="text-amber-400 text-sm">⭐</span>
                   )}
-                  <span className="text-white/40 text-sm">{getRoleIcon(player.role)}</span>
+                  <span className="text-white/50 font-mono text-sm">
+                    {auctionState?.soldPrices[player.id]?.toLocaleString() || '-'}
+                  </span>
                 </div>
               ))}
 

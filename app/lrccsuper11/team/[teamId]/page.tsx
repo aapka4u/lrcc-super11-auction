@@ -5,22 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { TEAMS, TEAM_LEADERS, PLAYERS } from '@/lib/data';
 import { Player } from '@/lib/types';
-
-// Generate password: vicecaptain name (lowercase, no spaces) + captain name (lowercase, no spaces)
-function generateTeamPassword(team: typeof TEAMS[0]): string {
-  const vcName = team.viceCaptain.toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
-  const captainName = team.captain.toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
-  return vcName + captainName;
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
+import TeamStoryVideo from '@/components/TeamStoryVideo';
 
 interface TeamProfile {
   logo?: string;
@@ -30,39 +15,48 @@ interface AuctionState {
   rosters: Record<string, string[]>;
   soldPrices: Record<string, number>;
   teamSpent: Record<string, number>;
+  teamProfiles?: Record<string, TeamProfile>;
+  biddingDurations?: Record<string, number>;
 }
+
+// Camera icon component
+const CameraIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
 
 export default function TeamPage() {
   const params = useParams();
   const teamId = params.teamId as string;
   const team = TEAMS.find(t => t.id === teamId);
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [teamProfile, setTeamProfile] = useState<TeamProfile>({});
   const [auctionState, setAuctionState] = useState<AuctionState | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [showStoryVideo, setShowStoryVideo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch auction state
-  useEffect(() => {
-    const fetchState = async () => {
-      try {
-        const res = await fetch('/api/state');
-        const data = await res.json();
-        setAuctionState(data);
-        if (data.teamProfiles?.[teamId]) {
-          setTeamProfile(data.teamProfiles[teamId]);
-        }
-      } catch (err) {
-        console.error('Failed to fetch state:', err);
+  const fetchState = async () => {
+    try {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+      setAuctionState(data);
+      if (data.teamProfiles?.[teamId]) {
+        setTeamProfile(data.teamProfiles[teamId]);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch state:', err);
+    }
+  };
+
+  useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 60000); // 60s - auction is over
-    return () => clearInterval(interval);
   }, [teamId]);
 
   if (!team) {
@@ -78,65 +72,45 @@ export default function TeamPage() {
     );
   }
 
-  const correctPassword = generateTeamPassword(team);
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password.toLowerCase() === correctPassword) {
-      setIsAuthenticated(true);
-      setError('');
-    } else {
-      setError('Incorrect password');
-    }
-  };
-
+  // Handle logo upload
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 1024 * 1024) {
-      setError('Image must be less than 1MB');
+      setLogoError('Image must be less than 1MB');
       return;
     }
 
-    setIsUploading(true);
-    setError('');
+    setIsUploadingLogo(true);
+    setLogoError(null);
 
-    try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
         const res = await fetch('/api/team-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            teamId,
-            password,
-            logo: base64,
-          }),
+          body: JSON.stringify({ teamId, logo: reader.result }),
         });
-
-        if (res.ok) {
-          setTeamProfile({ ...teamProfile, logo: base64 });
-          setUploadSuccess(true);
-          setTimeout(() => setUploadSuccess(false), 3000);
-        } else {
+        if (!res.ok) {
           const data = await res.json();
-          setError(data.error || 'Failed to upload logo');
+          throw new Error(data.error || 'Upload failed');
         }
-        setIsUploading(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      setError('Failed to upload logo');
-      setIsUploading(false);
-    }
+        // Refresh state to get new logo
+        await fetchState();
+      } catch (err) {
+        setLogoError(err instanceof Error ? err.message : 'Upload failed');
+      } finally {
+        setIsUploadingLogo(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleShare = async () => {
-    const shareUrl = `${window.location.origin}/lrccsuper11/team/${teamId}/card`;
-    const shareText = `Check out ${team.name} in the LRCC Super 11 League 2026! 🏏`;
+    const shareUrl = `${window.location.origin}/lrccsuper11/team/${teamId}`;
+    const shareText = `Check out ${team.name} in the LRCC Super 11 League 2026!`;
 
     if (navigator.share) {
       try {
@@ -149,17 +123,24 @@ export default function TeamPage() {
         // User cancelled or share failed
       }
     } else {
-      // Fallback: copy to clipboard
       navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
       alert('Link copied to clipboard!');
     }
   };
 
-  // Get roster players
+  // Get roster players and sort by role: Batsman/WK-Batsman -> All-rounder -> Bowler
+  const roleOrder: Record<string, number> = {
+    'Batsman': 1,
+    'WK-Batsman': 2,
+    'All-rounder': 3,
+    'Bowler': 4,
+  };
+
   const rosterPlayerIds = auctionState?.rosters[teamId] || [];
   const rosterPlayers = rosterPlayerIds
     .map(id => PLAYERS.find(p => p.id === id))
-    .filter((p): p is Player => p !== undefined);
+    .filter((p): p is Player => p !== undefined)
+    .sort((a, b) => (roleOrder[a.role || ''] || 99) - (roleOrder[b.role || ''] || 99));
 
   // Get captain and VC
   const captain = TEAM_LEADERS.find(p => p.teamId === teamId && p.category === 'CAPTAIN');
@@ -170,60 +151,6 @@ export default function TeamPage() {
   const spent = auctionState?.teamSpent[teamId] || 0;
   const remaining = budget - spent;
 
-  // Login screen
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-2xl p-6 w-full max-w-sm">
-          <div className="text-center mb-6">
-            <div
-              className="w-16 h-16 rounded-xl mx-auto mb-4 flex items-center justify-center text-white font-bold text-2xl"
-              style={{ backgroundColor: team.color }}
-            >
-              {team.name.split(' ')[1]?.[0] || team.name[0]}
-            </div>
-            <h1 className="text-xl font-bold text-white">{team.name}</h1>
-            <p className="text-white/60 text-sm mt-1">Captain & VC Login</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Team Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-white/40"
-                autoComplete="off"
-              />
-              {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
-            </div>
-            <button
-              type="submit"
-              className="w-full py-3 rounded-xl font-semibold text-white transition-all"
-              style={{ backgroundColor: team.color }}
-            >
-              Login
-            </button>
-          </form>
-
-          <p className="text-center text-white/40 text-xs mt-6">
-            Password hint: VC name + Captain name (lowercase)
-          </p>
-
-          <Link
-            href="/lrccsuper11"
-            className="block text-center text-white/60 text-sm mt-4 hover:text-white"
-          >
-            ← Back to Auction
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // Team management dashboard
   return (
     <div className="min-h-screen p-4 pb-24">
       <div className="max-w-lg mx-auto">
@@ -232,12 +159,6 @@ export default function TeamPage() {
           <Link href="/lrccsuper11" className="text-white/60 hover:text-white">
             ← Back
           </Link>
-          <button
-            onClick={() => setIsAuthenticated(false)}
-            className="text-white/60 hover:text-white text-sm"
-          >
-            Logout
-          </button>
         </div>
 
         {/* Team Header Card */}
@@ -246,8 +167,8 @@ export default function TeamPage() {
           style={{ borderColor: team.color }}
         >
           <div className="flex items-center gap-4">
-            {/* Logo or Placeholder */}
-            <div className="relative">
+            {/* Logo or Placeholder with Upload */}
+            <div className="relative group">
               {teamProfile.logo ? (
                 <img
                   src={teamProfile.logo}
@@ -262,12 +183,17 @@ export default function TeamPage() {
                   {team.name.split(' ')[1]?.[0] || team.name[0]}
                 </div>
               )}
+              {/* Upload overlay */}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors"
-                disabled={isUploading}
+                disabled={isUploadingLogo}
+                className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
               >
-                {isUploading ? '...' : '📷'}
+                {isUploadingLogo ? (
+                  <span className="text-white text-sm">...</span>
+                ) : (
+                  <CameraIcon className="w-8 h-8 text-white" />
+                )}
               </button>
               <input
                 ref={fileInputRef}
@@ -290,16 +216,8 @@ export default function TeamPage() {
               </div>
             </div>
           </div>
-
-          {uploadSuccess && (
-            <div className="mt-3 text-center text-green-400 text-sm animate-fade-in">
-              ✓ Logo uploaded successfully!
-            </div>
-          )}
-          {error && (
-            <div className="mt-3 text-center text-red-400 text-sm">
-              {error}
-            </div>
+          {logoError && (
+            <p className="text-red-400 text-sm mt-2 text-center">{logoError}</p>
           )}
         </div>
 
@@ -324,6 +242,32 @@ export default function TeamPage() {
           </div>
         </div>
 
+        {/* Share Your Team Section */}
+        <div className="glass rounded-xl p-4 mb-4">
+          <h2 className="text-white font-semibold mb-3">Share Your Team</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {/* Team Story Video Button */}
+            <button
+              onClick={() => setShowStoryVideo(true)}
+              className="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl border border-purple-500/30 hover:border-purple-400/50 transition-all"
+            >
+              <span className="text-2xl mb-2">🎬</span>
+              <span className="text-white text-sm font-medium">Team Story</span>
+              <span className="text-white/50 text-xs">15 sec video</span>
+            </button>
+
+            {/* Static Card Button */}
+            <Link
+              href={`/lrccsuper11/team/${teamId}/card`}
+              className="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl border border-blue-500/30 hover:border-blue-400/50 transition-all"
+            >
+              <span className="text-2xl mb-2">🖼️</span>
+              <span className="text-white text-sm font-medium">Team Card</span>
+              <span className="text-white/50 text-xs">Share image</span>
+            </Link>
+          </div>
+        </div>
+
         {/* Roster */}
         <div className="glass rounded-xl p-4 mb-4">
           <h2 className="text-white font-semibold mb-3">Squad</h2>
@@ -333,13 +277,37 @@ export default function TeamPage() {
             {captain && (
               <div className="flex items-center gap-3 bg-amber-500/10 rounded-lg px-3 py-2 border border-amber-500/20">
                 <span className="text-amber-400 font-bold text-xs w-6">C</span>
-                <span className="text-white font-medium">{captain.name}</span>
+                <Link
+                  href={`/lrccsuper11/player/${captain.id}`}
+                  className="text-white font-medium hover:text-amber-300 transition-colors flex-1"
+                >
+                  {captain.name}
+                </Link>
+                <Link
+                  href={`/lrccsuper11/player/${captain.id}?upload=true`}
+                  className="text-white/30 hover:text-white/70 transition-colors p-1"
+                  title="Upload photo"
+                >
+                  <CameraIcon className="w-4 h-4" />
+                </Link>
               </div>
             )}
             {viceCaptain && (
               <div className="flex items-center gap-3 bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
                 <span className="text-amber-500/70 font-bold text-xs w-6">VC</span>
-                <span className="text-white/90 font-medium">{viceCaptain.name}</span>
+                <Link
+                  href={`/lrccsuper11/player/${viceCaptain.id}`}
+                  className="text-white/90 font-medium hover:text-amber-300 transition-colors flex-1"
+                >
+                  {viceCaptain.name}
+                </Link>
+                <Link
+                  href={`/lrccsuper11/player/${viceCaptain.id}?upload=true`}
+                  className="text-white/30 hover:text-white/70 transition-colors p-1"
+                  title="Upload photo"
+                >
+                  <CameraIcon className="w-4 h-4" />
+                </Link>
               </div>
             )}
           </div>
@@ -351,23 +319,44 @@ export default function TeamPage() {
 
           {/* Roster Players */}
           <div className="space-y-2">
-            {rosterPlayers.map((player, index) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-white/40 text-xs w-4">{index + 1}</span>
-                  <span className="text-white">{player.name}</span>
-                  {player.category === 'APLUS' && (
-                    <span className="text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">⭐</span>
-                  )}
+            {rosterPlayers.map((player, index) => {
+              const roleIcon = player.role === 'Batsman' ? '🏏' :
+                               player.role === 'WK-Batsman' ? '🧤' :
+                               player.role === 'All-rounder' ? '⚡' :
+                               player.role === 'Bowler' ? '🎯' : '';
+              return (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <span className="text-white/40 text-xs w-4">{index + 1}</span>
+                    <span className="text-sm w-5">{roleIcon}</span>
+                    <Link
+                      href={`/lrccsuper11/player/${player.id}`}
+                      className="text-white hover:text-amber-300 transition-colors truncate"
+                    >
+                      {player.name}
+                    </Link>
+                    {player.category === 'APLUS' && (
+                      <span className="text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">⭐</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/lrccsuper11/player/${player.id}?upload=true`}
+                      className="text-white/30 hover:text-white/70 transition-colors p-1"
+                      title="Upload photo"
+                    >
+                      <CameraIcon className="w-4 h-4" />
+                    </Link>
+                    <span className="text-white/60 font-mono text-sm">
+                      {auctionState?.soldPrices[player.id]?.toLocaleString() || '-'}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-white/60 font-mono text-sm">
-                  {auctionState?.soldPrices[player.id]?.toLocaleString() || '-'}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {rosterPlayers.length === 0 && (
@@ -383,9 +372,25 @@ export default function TeamPage() {
           className="w-full py-4 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all active:scale-98"
           style={{ backgroundColor: team.color }}
         >
-          <span>📤</span> Share Team on WhatsApp
+          Share Team Link
         </button>
       </div>
+
+      {/* Team Story Video Modal */}
+      {showStoryVideo && captain && viceCaptain && (
+        <TeamStoryVideo
+          team={{
+            ...team,
+            roster: rosterPlayers,
+            captainPlayer: captain,
+            viceCaptainPlayer: viceCaptain,
+            spent: spent,
+          }}
+          soldPrices={auctionState?.soldPrices || {}}
+          biddingDurations={auctionState?.biddingDurations || {}}
+          onComplete={() => setShowStoryVideo(false)}
+        />
+      )}
     </div>
   );
 }

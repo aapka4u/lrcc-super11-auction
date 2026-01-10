@@ -45,8 +45,7 @@ export default function IntelligencePage() {
     };
 
     fetchState();
-    const interval = setInterval(fetchState, 60000); // 60s - auction is over
-    return () => clearInterval(interval);
+    // No polling - auction is over
   }, []);
 
   // Build auction history from sold players

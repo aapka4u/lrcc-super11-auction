@@ -80,8 +80,7 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 60000); // 60s - auction is over
-    return () => clearInterval(interval);
+    // No polling - auction is over
   }, [fetchState]);
 
   if (!state) {
