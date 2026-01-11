@@ -117,9 +117,9 @@ All player and team data is pre-configured:
 | Team | Captain | Vice-Captain | Budget |
 |------|---------|--------------|--------|
 | Team Sree & Naveen | Sree | Naveen | ₹11,500 |
-| Team Sathish & Mehul | Sathish | Mehul Lalith | ₹11,500 |
+| LRCC Super Domin8ers | Sathish | Mehul Lalith | ₹11,500 |
 | Team Rohit & Praveen | Rohit | Praveen | ₹11,500 |
-| Team Rajul & Kathir | Rajul | Kathir | ₹11,500 |
+| Octo-Pace | Rajul | Kathir | ₹11,500 |
 | Team Vaibhav & Sasi | Vaibhav | Sasi | ₹11,500 |
 | Team Murali & Paddy | Murali | KP Paddy | ₹12,500 |
 

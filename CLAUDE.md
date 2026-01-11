@@ -19,9 +19,9 @@ A real-time cricket player auction display system for a local cricket league. Th
 | Team | Team Page | Team Card |
 |------|-----------|-----------|
 | Team Sree & Naveen | /lrccsuper11/team/team_sree_naveen | /lrccsuper11/team/team_sree_naveen/card |
-| Team Sathish & Mehul | /lrccsuper11/team/team_sathish_mehul | /lrccsuper11/team/team_sathish_mehul/card |
+| LRCC Super Domin8ers | /lrccsuper11/team/team_sathish_mehul | /lrccsuper11/team/team_sathish_mehul/card |
 | Team Rohit & Praveen | /lrccsuper11/team/team_rohit_praveen | /lrccsuper11/team/team_rohit_praveen/card |
-| Team Rajul & Kathir | /lrccsuper11/team/team_rajul_kathir | /lrccsuper11/team/team_rajul_kathir/card |
+| Octo-Pace | /lrccsuper11/team/team_rajul_kathir | /lrccsuper11/team/team_rajul_kathir/card |
 | Team Vaibhav & Sasi | /lrccsuper11/team/team_vaibhav_sasi | /lrccsuper11/team/team_vaibhav_sasi/card |
 | Team Murali & Paddy | /lrccsuper11/team/team_murali_paddy | /lrccsuper11/team/team_murali_paddy/card |
 
@@ -79,9 +79,9 @@ Each team has a captain and vice-captain already assigned (not in auction pool).
 | Team | Captain | Vice-Captain | Budget |
 |------|---------|--------------|--------|
 | Team Sree & Naveen | Sree | Naveen | 11,500 |
-| Team Sathish & Mehul | Sathish | Mehul Lalith | 11,500 |
+| LRCC Super Domin8ers | Sathish | Mehul Lalith | 11,500 |
 | Team Rohit & Praveen | Rohit | Praveen | 11,500 |
-| Team Rajul & Kathir | Rajul | Kathir | 11,500 |
+| Octo-Pace | Rajul | Kathir | 11,500 |
 | Team Vaibhav & Sasi | Vaibhav | Sasi | 11,500 |
 | Team Murali & Paddy | Murali | KP Paddy | **12,500** |
 

@@ -11,7 +11,7 @@ export const TEAMS: Team[] = [
   },
   {
     id: 'team_sathish_mehul',
-    name: 'Team Sathish & Mehul',
+    name: 'LRCC Super Domin8ers',
     captain: 'Sathish',
     viceCaptain: 'Mehul Lalith',
     color: '#EF4444', // Red
@@ -27,7 +27,7 @@ export const TEAMS: Team[] = [
   },
   {
     id: 'team_rajul_kathir',
-    name: 'Team Rajul & Kathir',
+    name: 'Octo-Pace',
     captain: 'Rajul',
     viceCaptain: 'Kathir',
     color: '#F59E0B', // Amber

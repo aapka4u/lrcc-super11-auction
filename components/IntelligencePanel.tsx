@@ -130,8 +130,8 @@ export default function IntelligencePanel({
       }
     }
     
-    // Auto-load avoid list for your team if not set
-    const yourTeam = TEAMS.find(t => t.name.includes('Rajul') || t.name.includes('Kathir'));
+    // Auto-load avoid list for your team (Octo-Pace) if not set
+    const yourTeam = TEAMS.find(t => t.id === 'team_rajul_kathir');
     if (yourTeam && !parsed[yourTeam.id]?.avoidPlayers) {
       // Default avoid list: Ayush Kothari, Srini, Jayendra, Bala, Vinith, Brijul, Gagan, Vikas, Kunal Kanade
       const avoidPlayerNames = ['Ayush Kothari', 'Srini', 'Jayendra', 'Bala', 'Vinith', 'Brijul', 'Gagan Sharma', 'Vikas', 'Kunal Kanade'];
@@ -247,13 +247,14 @@ export default function IntelligencePanel({
     return learned;
   }, [teams, auctionHistory]);
   
-  // Identify your team (Team Rajul & Kathir)
-  // Fallback chain: look in TEAMS first, then live teams, then use empty string
+  // Identify your team (Octo-Pace, formerly Team Rajul & Kathir)
+  // Use the team ID directly for reliable lookup
   const yourTeamId = useMemo(() => {
-    const fromStatic = TEAMS.find(t => t.name.includes('Rajul') || t.name.includes('Kathir'))?.id;
-    if (fromStatic) return fromStatic;
-    const fromLive = teams.find(t => t.name.includes('Rajul') || t.name.includes('Kathir'))?.id;
-    if (fromLive) return fromLive;
+    const teamId = 'team_rajul_kathir';
+    // Verify team exists in static or live data
+    if (TEAMS.find(t => t.id === teamId) || teams.find(t => t.id === teamId)) {
+      return teamId;
+    }
     return teams[0]?.id || ''; // Empty string as last resort
   }, [teams]);
   
