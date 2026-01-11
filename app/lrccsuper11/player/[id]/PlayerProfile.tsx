@@ -41,12 +41,10 @@ function PhotoUploadModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [nameInput, setNameInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState<'verify' | 'upload'>('verify');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,19 +73,6 @@ function PhotoUploadModal({
     reader.readAsDataURL(file);
   };
 
-  const handleVerify = () => {
-    // Simple name verification (case-insensitive, trimmed)
-    const inputName = nameInput.trim().toLowerCase();
-    const playerName = player.name.toLowerCase();
-
-    if (inputName === playerName || inputName === playerName.split(' ')[0].toLowerCase()) {
-      setStep('upload');
-      setError(null);
-    } else {
-      setError('Name does not match. Please enter your name exactly as shown.');
-    }
-  };
-
   const handleUpload = async () => {
     if (!selectedFile || !preview) return;
 
@@ -101,7 +86,7 @@ function PhotoUploadModal({
         body: JSON.stringify({
           playerId: player.id,
           playerName: player.name,
-          verificationName: nameInput,
+          verificationName: player.name,
           image: preview,
         }),
       });
@@ -124,7 +109,7 @@ function PhotoUploadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="glass bg-slate-900/90 border border-white/20 rounded-2xl max-w-md w-full p-6 animate-scale-in">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Update Your Photo</h2>
+          <h2 className="text-xl font-bold text-white">Update Photo for {player.name}</h2>
           <button
             onClick={onClose}
             className="text-white/60 hover:text-white transition-colors"
@@ -135,83 +120,45 @@ function PhotoUploadModal({
           </button>
         </div>
 
-        {step === 'verify' ? (
-          <>
-            <p className="text-white/70 mb-4">
-              To verify it&apos;s you, please enter your name:
-            </p>
-            <p className="text-lg font-semibold text-white mb-4">
-              {player.name}
-            </p>
-            <input
-              type="text"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              placeholder="Enter your name"
-              className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-amber-500/50 mb-4"
-              onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
-            />
-            {error && (
-              <p className="text-red-400 text-sm mb-4">{error}</p>
-            )}
-            <button
-              onClick={handleVerify}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-3 rounded-lg transition-colors"
-            >
-              Verify & Continue
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="mb-6">
-              {preview ? (
-                <div className="relative w-32 h-32 mx-auto rounded-xl overflow-hidden border-4 border-amber-500/50">
-                  <img src={preview} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-32 h-32 mx-auto rounded-xl bg-white/10 border-2 border-dashed border-white/30 flex items-center justify-center">
-                  <span className="text-white/40 text-sm text-center px-2">
-                    Select a photo
-                  </span>
-                </div>
-              )}
+        <div className="mb-6">
+          {preview ? (
+            <div className="relative w-32 h-32 mx-auto rounded-xl overflow-hidden border-4 border-amber-500/50">
+              <img src={preview} alt="Preview" className="w-full h-full object-cover" />
             </div>
-
-            <label className="block mb-4">
-              <span className="sr-only">Choose photo</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="block w-full text-sm text-white/60 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-500 file:text-black hover:file:bg-amber-600 file:cursor-pointer cursor-pointer"
-              />
-            </label>
-
-            <p className="text-white/50 text-xs mb-4">
-              Max file size: 1MB. Supported formats: JPG, PNG, GIF
-            </p>
-
-            {error && (
-              <p className="text-red-400 text-sm mb-4">{error}</p>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep('verify')}
-                className="flex-1 bg-white/10 hover:bg-white/20 text-white font-semibold py-3 rounded-lg transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={!selectedFile || isUploading}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 disabled:cursor-not-allowed text-black font-semibold py-3 rounded-lg transition-colors"
-              >
-                {isUploading ? 'Uploading...' : 'Upload Photo'}
-              </button>
+          ) : (
+            <div className="w-32 h-32 mx-auto rounded-xl bg-white/10 border-2 border-dashed border-white/30 flex items-center justify-center">
+              <span className="text-white/40 text-sm text-center px-2">
+                Select a photo
+              </span>
             </div>
-          </>
+          )}
+        </div>
+
+        <label className="block mb-4">
+          <span className="sr-only">Choose photo</span>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="block w-full text-sm text-white/60 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-500 file:text-black hover:file:bg-amber-600 file:cursor-pointer cursor-pointer"
+          />
+        </label>
+
+        <p className="text-white/50 text-xs mb-4">
+          Max file size: 1MB. Supported formats: JPG, PNG, GIF
+        </p>
+
+        {error && (
+          <p className="text-red-400 text-sm mb-4">{error}</p>
         )}
+
+        <button
+          onClick={handleUpload}
+          disabled={!selectedFile || isUploading}
+          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 disabled:cursor-not-allowed text-black font-semibold py-3 rounded-lg transition-colors"
+        >
+          {isUploading ? 'Uploading...' : 'Upload Photo'}
+        </button>
       </div>
     </div>
   );
@@ -447,7 +394,7 @@ export default function PlayerProfile() {
               {isLeader ? (
                 <span>{player.category === 'CAPTAIN' ? '👑 CAPTAIN' : '⭐ VICE-CAPTAIN'} - {soldToTeam.name}</span>
               ) : (
-                <span>🎉 SOLD TO {soldToTeam.name.toUpperCase()} {soldPrice ? `FOR ₹${soldPrice.toLocaleString()}` : ''}</span>
+                <span>🎉 SOLD TO {soldToTeam.name.toUpperCase()}</span>
               )}
             </div>
           )}

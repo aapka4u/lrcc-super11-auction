@@ -6,6 +6,8 @@ import { getInitialState, PLAYERS, TEAMS, TEAM_LEADERS, getTeamById, calculateMa
 const STATE_KEY = 'auction:state';
 const PROFILES_KEY = 'player:profiles';
 const TEAM_PROFILES_KEY = 'team:profiles';
+const ADMIN_SESSION_KEY = 'admin:session';
+const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const ADMIN_PIN = process.env.ADMIN_PIN;
 
 // Helper to find player from both auction pool and team leaders
@@ -123,6 +125,7 @@ export async function GET() {
       teamProfiles: teamProfiles || {},
       rosters: auctionState.rosters,
       teamSpent: auctionState.teamSpent,
+      sessionActive: false, // Public endpoint doesn't expose session info
     });
   } catch (error) {
     console.error('Error fetching state:', error);
@@ -141,6 +144,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
     }
 
+    // Session management helper functions
+    const checkSession = async (): Promise<{ valid: boolean; error?: string }> => {
+      const session = await kv.get<{ adminId: string; timestamp: number }>(ADMIN_SESSION_KEY);
+      if (!session) {
+        return { valid: false, error: 'No active session. Please login again.' };
+      }
+      if (session.adminId !== pin) {
+        return { valid: false, error: 'Another admin session is active. Please wait.' };
+      }
+      if (Date.now() - session.timestamp > SESSION_TIMEOUT) {
+        await kv.del(ADMIN_SESSION_KEY);
+        return { valid: false, error: 'Session expired. Please refresh and login again.' };
+      }
+      return { valid: true };
+    };
+
+    const refreshSession = async () => {
+      await kv.set(ADMIN_SESSION_KEY, { adminId: pin, timestamp: Date.now() }, { ex: 300 }); // 5 min expiry
+    };
+
     let state = await kv.get<AuctionState>(STATE_KEY);
     if (!state) {
       state = getInitialState();
@@ -151,7 +174,43 @@ export async function POST(request: NextRequest) {
         // Just checking PIN
         return NextResponse.json({ success: true });
 
-      case 'START_AUCTION':
+      case 'ACQUIRE_SESSION':
+        // Check for existing session
+        const existingSession = await kv.get<{ adminId: string; timestamp: number }>(ADMIN_SESSION_KEY);
+        if (existingSession && Date.now() - existingSession.timestamp < SESSION_TIMEOUT) {
+          if (existingSession.adminId !== pin) {
+            return NextResponse.json({ error: 'Another admin session is active' }, { status: 409 });
+          }
+          // Same admin refreshing - update timestamp
+          await refreshSession();
+          return NextResponse.json({ success: true });
+        }
+        // Create new session
+        await refreshSession();
+        return NextResponse.json({ success: true });
+
+      case 'RELEASE_SESSION':
+        // Release session
+        await kv.del(ADMIN_SESSION_KEY);
+        return NextResponse.json({ success: true });
+
+      case 'REFRESH_SESSION':
+        // Refresh session timestamp
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
+        return NextResponse.json({ success: true });
+
+      case 'START_AUCTION': {
+        // Check session for all actions except VERIFY, ACQUIRE_SESSION, RELEASE_SESSION, REFRESH_SESSION
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
+
         // Set player as currently being auctioned
         if (!playerId) {
           return NextResponse.json({ error: 'Player ID required' }, { status: 400 });
@@ -172,8 +231,15 @@ export async function POST(request: NextRequest) {
         state.soldToTeamId = null;
         state.auctionStartTime = Date.now(); // Track when bidding started
         break;
+      }
 
-      case 'SOLD':
+      case 'SOLD': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Mark player as sold to a team
         if (!teamId || !state.currentPlayerId) {
           return NextResponse.json({ error: 'Team ID required' }, { status: 400 });
@@ -288,8 +354,15 @@ export async function POST(request: NextRequest) {
           state.unsoldPlayers = state.unsoldPlayers.filter(id => id !== currentId);
         }
         break;
+      }
 
-      case 'UNSOLD':
+      case 'UNSOLD': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Mark player as unsold (skip) - joker is NOT consumed
         if (state.currentPlayerId) {
           // Add to unsold players list
@@ -305,8 +378,15 @@ export async function POST(request: NextRequest) {
           state.jokerRequestingTeamId = null;
         }
         break;
+      }
 
-      case 'CLEAR':
+      case 'CLEAR': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Clear current auction, ready for next
         state.status = 'IDLE';
         state.currentPlayerId = null;
@@ -314,8 +394,15 @@ export async function POST(request: NextRequest) {
         state.jokerPlayerId = null;
         state.jokerRequestingTeamId = null;
         break;
+      }
 
-      case 'JOKER':
+      case 'JOKER': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Mark current player as joker for a specific team (can be claimed at base price)
         if (!teamId) {
           return NextResponse.json({ error: 'Team ID required for joker request' }, { status: 400 });
@@ -333,8 +420,15 @@ export async function POST(request: NextRequest) {
           state.jokerRequestingTeamId = teamId;
         }
         break;
+      }
 
-      case 'RANDOM':
+      case 'RANDOM': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Get random next player based on priority: Star → League → Unsold (at the end only)
         const unsoldPlayers = state!.unsoldPlayers || [];
         // Exclude both sold AND unsold players from regular pool - unsold only come at the end
@@ -364,8 +458,15 @@ export async function POST(request: NextRequest) {
         } else {
           return NextResponse.json({ error: 'No players available' }, { status: 400 });
         }
+      }
 
-      case 'PAUSE':
+      case 'PAUSE': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Pause the auction with optional message and duration
         state.status = 'PAUSED';
         state.pauseMessage = pauseMessage || 'Auction is paused. We will be back shortly.';
@@ -373,8 +474,15 @@ export async function POST(request: NextRequest) {
           ? Date.now() + (pauseMinutes * 60 * 1000)
           : undefined;
         break;
+      }
 
-      case 'UNPAUSE':
+      case 'UNPAUSE': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Resume the auction
         if (state.status === 'PAUSED') {
           state.status = state.currentPlayerId ? 'LIVE' : 'IDLE';
@@ -382,14 +490,60 @@ export async function POST(request: NextRequest) {
           state.pauseUntil = undefined;
         }
         break;
+      }
 
       case 'CORRECT': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
+
+        // Move player from one team to another (admin correction)
         // Move player from one team to another (admin correction)
         const { playerId, fromTeamId, toTeamId, newPrice } = body;
         if (!playerId || !fromTeamId || !toTeamId || newPrice === undefined) {
           return NextResponse.json({
             error: 'CORRECT requires playerId, fromTeamId, toTeamId, newPrice'
           }, { status: 400 });
+        }
+
+        // Validate player exists and is sold
+        if (!state.soldPlayers.includes(playerId)) {
+          return NextResponse.json({ error: 'Player is not sold' }, { status: 400 });
+        }
+
+        // Validate fromTeam has this player
+        if (!state.rosters[fromTeamId]?.includes(playerId)) {
+          return NextResponse.json({ error: 'Player is not in the specified from team' }, { status: 400 });
+        }
+
+        // Validate toTeam exists
+        const toTeam = TEAMS.find(t => t.id === toTeamId);
+        if (!toTeam) {
+          return NextResponse.json({ error: 'Target team not found' }, { status: 400 });
+        }
+
+        // Validate toTeam can afford new price
+        const currentToSpent = state.teamSpent[toTeamId] || 0;
+        const toRosterSize = (state.rosters[toTeamId] || []).length;
+        const remainingAfterCorrection = PLAYERS.filter(p =>
+          !state!.soldPlayers.includes(p.id) && p.id !== playerId
+        );
+        const remainingAplusAfter = remainingAfterCorrection.filter(p => p.category === 'APLUS').length;
+        const remainingBaseAfter = remainingAfterCorrection.filter(p => p.category === 'BASE').length;
+        const maxBidAllowed = calculateMaxBid(toTeamId, currentToSpent, toRosterSize, remainingAplusAfter, remainingBaseAfter);
+
+        if (newPrice > maxBidAllowed && toRosterSize < (TEAM_SIZE - 2)) {
+          return NextResponse.json({
+            error: `New price ₹${newPrice} exceeds max allowed ₹${maxBidAllowed} for ${toTeam.name}`
+          }, { status: 400 });
+        }
+
+        // Validate price is multiple of 100
+        if (newPrice % 100 !== 0) {
+          return NextResponse.json({ error: 'Price must be a multiple of ₹100' }, { status: 400 });
         }
 
         // Remove from old team
@@ -405,6 +559,13 @@ export async function POST(request: NextRequest) {
       }
 
       case 'ADD_PLAYER': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
+
         // Add player directly to a team (admin backend correction)
         const { playerId: addPlayerId, teamId: addTeamId, price: addPrice } = body;
         if (!addPlayerId || !addTeamId || addPrice === undefined) {
@@ -420,7 +581,13 @@ export async function POST(request: NextRequest) {
         break;
       }
 
-      case 'RESET':
+      case 'RESET': {
+        // Check session
+        const sessionCheck = await checkSession();
+        if (!sessionCheck.valid) {
+          return NextResponse.json({ error: sessionCheck.error }, { status: 401 });
+        }
+        await refreshSession();
         // Full reset
         if (!confirmReset) {
           return NextResponse.json({
@@ -428,7 +595,10 @@ export async function POST(request: NextRequest) {
           }, { status: 400 });
         }
         state = getInitialState();
+        // Also clear session on reset
+        await kv.del(ADMIN_SESSION_KEY);
         break;
+      }
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

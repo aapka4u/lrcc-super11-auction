@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { TEAMS, TEAM_LEADERS, PLAYERS } from '@/lib/data';
+import { TEAMS } from '@/lib/data';
 import { Player } from '@/lib/types';
 import TeamStoryVideo from '@/components/TeamStoryVideo';
 
@@ -11,10 +11,22 @@ interface TeamProfile {
   logo?: string;
 }
 
-interface AuctionState {
-  rosters: Record<string, string[]>;
+interface TeamFromAPI {
+  id: string;
+  name: string;
+  color: string;
+  captain: string;
+  viceCaptain: string;
+  budget: number;
+  roster: Player[];
+  captainPlayer?: Player;
+  viceCaptainPlayer?: Player;
+  spent?: number;
+}
+
+interface APIResponse {
+  teams: TeamFromAPI[];
   soldPrices: Record<string, number>;
-  teamSpent: Record<string, number>;
   teamProfiles?: Record<string, TeamProfile>;
   biddingDurations?: Record<string, number>;
 }
@@ -32,10 +44,10 @@ const CameraIcon = ({ className }: { className?: string }) => (
 export default function TeamPage() {
   const params = useParams();
   const teamId = params.teamId as string;
-  const team = TEAMS.find(t => t.id === teamId);
+  const teamStatic = TEAMS.find(t => t.id === teamId);
 
   const [teamProfile, setTeamProfile] = useState<TeamProfile>({});
-  const [auctionState, setAuctionState] = useState<AuctionState | null>(null);
+  const [apiData, setApiData] = useState<APIResponse | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [showStoryVideo, setShowStoryVideo] = useState(false);
@@ -46,7 +58,7 @@ export default function TeamPage() {
     try {
       const res = await fetch('/api/state');
       const data = await res.json();
-      setAuctionState(data);
+      setApiData(data);
       if (data.teamProfiles?.[teamId]) {
         setTeamProfile(data.teamProfiles[teamId]);
       }
@@ -59,7 +71,7 @@ export default function TeamPage() {
     fetchState();
   }, [teamId]);
 
-  if (!team) {
+  if (!teamStatic) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -71,6 +83,10 @@ export default function TeamPage() {
       </div>
     );
   }
+
+  // Get team from API response (has roster with images)
+  const teamFromAPI = apiData?.teams?.find(t => t.id === teamId);
+  const team = teamFromAPI || teamStatic;
 
   // Handle logo upload
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,7 +144,7 @@ export default function TeamPage() {
     }
   };
 
-  // Get roster players and sort by role: Batsman/WK-Batsman -> All-rounder -> Bowler
+  // Get roster players sorted by role from API (with images)
   const roleOrder: Record<string, number> = {
     'Batsman': 1,
     'WK-Batsman': 2,
@@ -136,20 +152,15 @@ export default function TeamPage() {
     'Bowler': 4,
   };
 
-  const rosterPlayerIds = auctionState?.rosters[teamId] || [];
-  const rosterPlayers = rosterPlayerIds
-    .map(id => PLAYERS.find(p => p.id === id))
-    .filter((p): p is Player => p !== undefined)
+  const rosterPlayers = (teamFromAPI?.roster || [])
+    .slice()
     .sort((a, b) => (roleOrder[a.role || ''] || 99) - (roleOrder[b.role || ''] || 99));
 
-  // Get captain and VC
-  const captain = TEAM_LEADERS.find(p => p.teamId === teamId && p.category === 'CAPTAIN');
-  const viceCaptain = TEAM_LEADERS.find(p => p.teamId === teamId && p.category === 'VICE_CAPTAIN');
+  // Get captain and VC from API (with images)
+  const captain = teamFromAPI?.captainPlayer;
+  const viceCaptain = teamFromAPI?.viceCaptainPlayer;
 
-  const totalPlayers = 2 + rosterPlayers.length;
-  const budget = team.budget;
-  const spent = auctionState?.teamSpent[teamId] || 0;
-  const remaining = budget - spent;
+  const spent = teamFromAPI?.spent || 0;
 
   return (
     <div className="min-h-screen p-4 pb-24">
@@ -219,27 +230,6 @@ export default function TeamPage() {
           {logoError && (
             <p className="text-red-400 text-sm mt-2 text-center">{logoError}</p>
           )}
-        </div>
-
-        {/* Budget Card */}
-        <div className="glass rounded-xl p-4 mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-white/60 text-sm">Budget</span>
-            <span className="text-white font-mono">{remaining.toLocaleString()} / {budget.toLocaleString()}</span>
-          </div>
-          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${(remaining / budget) * 100}%`,
-                backgroundColor: team.color,
-              }}
-            />
-          </div>
-          <div className="flex justify-between mt-2 text-xs text-white/40">
-            <span>Spent: {spent.toLocaleString()}</span>
-            <span>{totalPlayers}/8 players</span>
-          </div>
         </div>
 
         {/* Share Your Team Section */}
@@ -342,18 +332,13 @@ export default function TeamPage() {
                       <span className="text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">⭐</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href={`/lrccsuper11/player/${player.id}?upload=true`}
-                      className="text-white/30 hover:text-white/70 transition-colors p-1"
-                      title="Upload photo"
-                    >
-                      <CameraIcon className="w-4 h-4" />
-                    </Link>
-                    <span className="text-white/60 font-mono text-sm">
-                      {auctionState?.soldPrices[player.id]?.toLocaleString() || '-'}
-                    </span>
-                  </div>
+                  <Link
+                    href={`/lrccsuper11/player/${player.id}?upload=true`}
+                    className="text-white/30 hover:text-white/70 transition-colors p-1"
+                    title="Upload photo"
+                  >
+                    <CameraIcon className="w-4 h-4" />
+                  </Link>
                 </div>
               );
             })}
@@ -386,8 +371,8 @@ export default function TeamPage() {
             viceCaptainPlayer: viceCaptain,
             spent: spent,
           }}
-          soldPrices={auctionState?.soldPrices || {}}
-          biddingDurations={auctionState?.biddingDurations || {}}
+          soldPrices={apiData?.soldPrices || {}}
+          biddingDurations={apiData?.biddingDurations || {}}
           onComplete={() => setShowStoryVideo(false)}
         />
       )}

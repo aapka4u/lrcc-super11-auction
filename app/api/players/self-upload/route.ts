@@ -5,14 +5,14 @@ import { ALL_PLAYERS } from '@/lib/data';
 
 const PROFILES_KEY = 'player:profiles';
 
-// POST: Self-upload photo with name verification (no PIN required)
+// POST: Self-upload photo (no authentication required)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { playerId, playerName, verificationName, image } = body;
+    const { playerId, image } = body;
 
     // Validate required fields
-    if (!playerId || !verificationName || !image) {
+    if (!playerId || !image) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -20,15 +20,6 @@ export async function POST(request: NextRequest) {
     const player = ALL_PLAYERS.find(p => p.id === playerId);
     if (!player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
-    }
-
-    // Verify name matches (case-insensitive, allow first name only)
-    const inputName = verificationName.trim().toLowerCase();
-    const actualName = player.name.toLowerCase();
-    const firstName = actualName.split(' ')[0];
-
-    if (inputName !== actualName && inputName !== firstName) {
-      return NextResponse.json({ error: 'Name verification failed' }, { status: 403 });
     }
 
     // Validate image (must be base64 data URL)

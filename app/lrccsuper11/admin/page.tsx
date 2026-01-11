@@ -228,6 +228,8 @@ export default function AdminPage() {
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'retrying'>('connected');
 
   // Player profiles state
   const [activeTab, setActiveTab] = useState<'auction' | 'profiles'>('auction');
@@ -252,6 +254,13 @@ export default function AdminPage() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [showUnsoldModal, setShowUnsoldModal] = useState(false);
   const [showDeleteImageModal, setShowDeleteImageModal] = useState<string | null>(null);
+  const [showCorrectionPanel, setShowCorrectionPanel] = useState(false);
+  
+  // Correction state
+  const [correctionPlayerId, setCorrectionPlayerId] = useState('');
+  const [correctionFromTeamId, setCorrectionFromTeamId] = useState('');
+  const [correctionToTeamId, setCorrectionToTeamId] = useState('');
+  const [correctionPrice, setCorrectionPrice] = useState<number>(0);
 
   // Audio refs (prevent memory leaks)
   const hammerAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -284,34 +293,56 @@ export default function AdminPage() {
     }
   }, []);
 
-  const fetchState = useCallback(async () => {
+  const fetchState = useCallback(async (retries = 3) => {
     // Cancel previous request to prevent pileup
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
 
-    // Set timeout to abort after 8 seconds
-    const timeoutId = setTimeout(() => {
-      abortControllerRef.current?.abort();
-    }, 8000);
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      // Set timeout to abort after 8 seconds
+      const timeoutId = setTimeout(() => {
+        abortControllerRef.current?.abort();
+      }, 8000);
 
-    try {
-      const res = await fetch('/api/state', {
-        cache: 'no-store',
-        signal: abortControllerRef.current.signal,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setState(data);
+      try {
+        const res = await fetch('/api/state', {
+          cache: 'no-store',
+          signal: abortControllerRef.current.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setState(data);
+          setConnectionStatus('connected');
+          return;
+        }
+        if (attempt < retries && res.status >= 500) {
+          setConnectionStatus('retrying');
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          clearTimeout(timeoutId);
+          continue;
+        }
+      } catch (err) {
+        // Ignore abort errors (expected when cancelling stale requests)
+        if (err instanceof Error && err.name === 'AbortError') {
+          clearTimeout(timeoutId);
+          return;
+        }
+        if (attempt < retries) {
+          setConnectionStatus('retrying');
+          console.error(`Fetch attempt ${attempt} failed, retrying...`, err);
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          clearTimeout(timeoutId);
+          continue;
+        } else {
+          console.error('Failed to fetch state after retries:', err);
+          setConnectionStatus('disconnected');
+          setMessage({ type: 'error', text: 'Connection lost. Retrying...' });
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
-    } catch (err) {
-      // Ignore abort errors (expected when cancelling stale requests)
-      if (err instanceof Error && err.name !== 'AbortError') {
-        console.error('Error fetching state:', err);
-      }
-    } finally {
-      clearTimeout(timeoutId);
     }
   }, []);
 
@@ -331,9 +362,30 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchState();
       fetchProfiles();
-      // No polling - auction is over
+      
+      // Refresh session every 2 minutes
+      const sessionRefreshInterval = setInterval(() => {
+        fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, action: 'REFRESH_SESSION' }),
+        }).catch(() => {
+          // If refresh fails, session might be expired
+          setSessionActive(false);
+        });
+      }, 2 * 60 * 1000);
+      
+      return () => {
+        clearInterval(sessionRefreshInterval);
+        // Release session on unmount
+        fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, action: 'RELEASE_SESSION' }),
+        }).catch(() => {});
+      };
     }
-  }, [isAuthenticated, fetchState, fetchProfiles]);
+  }, [isAuthenticated, pin, fetchState, fetchProfiles]);
 
   // Clear pause form when unpaused
   useEffect(() => {
@@ -364,14 +416,35 @@ export default function AdminPage() {
       });
 
       if (res.ok) {
-        setIsAuthenticated(true);
-        setPinError(false);
-        // Save to localStorage
-        try {
-          localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-          localStorage.setItem(PIN_STORAGE_KEY, pin);
-        } catch {
-          // localStorage not available
+        // Try to acquire session
+        const sessionRes = await fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, action: 'ACQUIRE_SESSION' }),
+        });
+
+        if (sessionRes.status === 409) {
+          setPinError(true);
+          setPin('');
+          setMessage({ type: 'error', text: 'Another admin is already active. Please wait.' });
+          setTimeout(() => setMessage(null), 5000);
+          return;
+        }
+
+        if (sessionRes.ok) {
+          setIsAuthenticated(true);
+          setPinError(false);
+          setSessionActive(true);
+          // Save to localStorage
+          try {
+            localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+            localStorage.setItem(PIN_STORAGE_KEY, pin);
+          } catch {
+            // localStorage not available
+          }
+        } else {
+          setPinError(true);
+          setPin('');
         }
       } else {
         setPinError(true);
@@ -384,9 +457,20 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Release session
+    try {
+      await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, action: 'RELEASE_SESSION' }),
+      }).catch(() => {}); // Ignore errors on logout
+    } catch {
+      // Ignore errors
+    }
     setIsAuthenticated(false);
     setPin('');
+    setSessionActive(false);
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(PIN_STORAGE_KEY);
@@ -395,35 +479,72 @@ export default function AdminPage() {
     }
   };
 
+  const performActionWithRetry = async (
+    action: string,
+    data: Record<string, string | boolean | number | undefined> = {},
+    maxRetries = 3
+  ) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, action, ...data }),
+        });
+        
+        const result = await res.json();
+        
+        if (res.ok) {
+          return { success: true, result };
+        }
+        
+        // Don't retry on client errors (4xx)
+        if (res.status < 500) {
+          return { success: false, error: result.error || 'Action failed' };
+        }
+        
+        // Retry on server errors (5xx)
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          continue;
+        }
+        
+        return { success: false, error: result.error || 'Action failed after retries' };
+      } catch (err) {
+        if (attempt === maxRetries) {
+          return { success: false, error: 'Network error' };
+        }
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+    return { success: false, error: 'Unknown error' };
+  };
+
   const performAction = async (action: string, data: Record<string, string | boolean | number | undefined> = {}) => {
     setLoading(true);
     setMessage(null);
     
-    try {
-      const res = await fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, action, ...data }),
-      });
-      
-      const result = await res.json();
-      
-      if (res.ok) {
-        setMessage({ type: 'success', text: `${action} successful!` });
-        await fetchState();
-        if (action === 'SOLD' || action === 'UNSOLD' || action === 'CLEAR') {
-          setSelectedPlayerId('');
-          setShowJokerSelector(false);
-        }
-      } else {
-        setMessage({ type: 'error', text: result.error || 'Action failed' });
+    const { success, result, error } = await performActionWithRetry(action, data);
+    
+    if (success) {
+      setMessage({ type: 'success', text: `${action} successful!` });
+      await fetchState();
+      if (action === 'SOLD' || action === 'UNSOLD' || action === 'CLEAR') {
+        setSelectedPlayerId('');
+        setShowJokerSelector(false);
       }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Network error' });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
+    } else {
+      // Check if session expired
+      if (error?.includes('session') || error?.includes('Session')) {
+        setSessionActive(false);
+        setMessage({ type: 'error', text: error || 'Session expired. Please refresh and login again.' });
+      } else {
+        setMessage({ type: 'error', text: error || 'Action failed' });
+      }
     }
+    
+    setLoading(false);
+    setTimeout(() => setMessage(null), 3000);
   };
 
   // Memoize expensive player computations to prevent re-calculation on every render
@@ -606,6 +727,80 @@ export default function AdminPage() {
     p.name.toLowerCase().includes(profileSearch.toLowerCase())
   );
 
+  // Correction handler
+  const handleCorrection = async () => {
+    if (!correctionPlayerId || !correctionFromTeamId || !correctionToTeamId || !correctionPrice || correctionPrice <= 0) {
+      setMessage({ type: 'error', text: 'Please fill all fields with valid values' });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+    
+    const { success, error } = await performActionWithRetry('CORRECT', {
+      playerId: correctionPlayerId,
+      fromTeamId: correctionFromTeamId,
+      toTeamId: correctionToTeamId,
+      newPrice: correctionPrice,
+    });
+
+    if (success) {
+      setMessage({ type: 'success', text: 'Correction applied! Budgets updated.' });
+      setShowCorrectionPanel(false);
+      setCorrectionPlayerId('');
+      setCorrectionFromTeamId('');
+      setCorrectionToTeamId('');
+      setCorrectionPrice(0);
+      await fetchState();
+    } else {
+      setMessage({ type: 'error', text: error || 'Correction failed' });
+    }
+    
+    setLoading(false);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  // Get sold players for correction dropdown
+  const soldPlayersForCorrection = useMemo(() => {
+    if (!state?.soldPlayers) return [];
+    return state.soldPlayers
+      .map(id => ALL_PLAYERS.find(p => p.id === id))
+      .filter((p): p is Player => p !== undefined);
+  }, [state?.soldPlayers]);
+
+  // Get team that currently has the selected player
+  useEffect(() => {
+    if (correctionPlayerId && state?.rosters) {
+      for (const [teamId, playerIds] of Object.entries(state.rosters)) {
+        if (playerIds.includes(correctionPlayerId)) {
+          setCorrectionFromTeamId(teamId);
+          // Set current price
+          const currentPrice = state.soldPrices?.[correctionPlayerId] || 0;
+          setCorrectionPrice(currentPrice);
+          break;
+        }
+      }
+    }
+  }, [correctionPlayerId, state?.rosters, state?.soldPrices]);
+
+  // Calculate remaining percentage for last 25% interface
+  // Exclude unsold players from the count since they're handled separately
+  const remainingPercentage = useMemo(() => {
+    if (!state) return 100;
+    const regularAvailable = availablePlayers.filter(p => !state.unsoldPlayers?.includes(p.id));
+    if (regularAvailable.length === 0) return 0;
+    return (regularAvailable.length / PLAYERS.length) * 100;
+  }, [state, availablePlayers]);
+  
+  const isLastQuarter = remainingPercentage <= 25;
+  
+  // For last 25% grid, show all available players (including unsold can be selected manually)
+  const playersForLastQuarterGrid = useMemo(() => {
+    if (!isLastQuarter) return [];
+    return availablePlayers;
+  }, [isLastQuarter, availablePlayers]);
+
   // PIN Login Screen
   if (!isAuthenticated) {
     return (
@@ -689,6 +884,22 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {/* Connection Status */}
+              <div className={`
+                px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1
+                ${connectionStatus === 'connected' ? 'bg-green-500/30 text-green-300' : ''}
+                ${connectionStatus === 'retrying' ? 'bg-amber-500/30 text-amber-300' : ''}
+                ${connectionStatus === 'disconnected' ? 'bg-red-500/30 text-red-300' : ''}
+              `}>
+                <span className="w-2 h-2 rounded-full bg-current" />
+                {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'retrying' ? 'Retrying...' : 'Disconnected'}
+              </div>
+              {/* Session Status */}
+              {sessionActive && (
+                <div className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-500/30 text-blue-300">
+                  🔒 Active Session
+                </div>
+              )}
               {/* Current Status Badge */}
               <div className={`
                 px-3 py-1 rounded-full text-xs font-bold
@@ -965,6 +1176,108 @@ export default function AdminPage() {
               </p>
             </button>
 
+            {/* Correction Panel */}
+            <div className="glass rounded-xl p-3 border border-blue-500/30">
+              <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2">
+                ✏️ Corrections
+              </h3>
+              {!showCorrectionPanel ? (
+                <button
+                  onClick={() => setShowCorrectionPanel(true)}
+                  disabled={loading}
+                  className="w-full bg-blue-600/50 hover:bg-blue-600 text-blue-300 font-semibold py-2 rounded-lg transition-colors text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Fix Player Assignment
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <select
+                    value={correctionPlayerId}
+                    onChange={(e) => setCorrectionPlayerId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="" className="bg-slate-800">-- Select Player --</option>
+                    {soldPlayersForCorrection.map(p => (
+                      <option key={p.id} value={p.id} className="bg-slate-800">
+                        {getRoleIcon(p.role)} {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {correctionPlayerId && (
+                    <>
+                      <select
+                        value={correctionFromTeamId}
+                        onChange={(e) => setCorrectionFromTeamId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled
+                      >
+                        <option value="" className="bg-slate-800">-- From Team (auto) --</option>
+                        {TEAMS.map(t => (
+                          <option key={t.id} value={t.id} className="bg-slate-800">
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={correctionToTeamId}
+                        onChange={(e) => setCorrectionToTeamId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="" className="bg-slate-800">-- To Team --</option>
+                        {TEAMS.filter(t => t.id !== correctionFromTeamId).map(t => (
+                          <option key={t.id} value={t.id} className="bg-slate-800">
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={correctionPrice || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^\d+$/.test(val)) {
+                            setCorrectionPrice(val === '' ? 0 : Number(val));
+                          }
+                        }}
+                        onBlur={() => {
+                          let roundedPrice = Math.round(correctionPrice / 100) * 100;
+                          if (roundedPrice < 100 || isNaN(roundedPrice)) {
+                            roundedPrice = 100;
+                          }
+                          setCorrectionPrice(roundedPrice);
+                        }}
+                        placeholder="New Price"
+                        min={100}
+                        step={100}
+                        className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCorrection}
+                          disabled={loading || !correctionPlayerId || !correctionToTeamId || correctionPrice <= 0}
+                          className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-colors text-sm"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowCorrectionPanel(false);
+                            setCorrectionPlayerId('');
+                            setCorrectionFromTeamId('');
+                            setCorrectionToTeamId('');
+                            setCorrectionPrice(0);
+                          }}
+                          className="px-3 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg transition-colors text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Danger Zone */}
             <div className="glass rounded-xl p-3 border border-red-500/30">
               <h3 className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">
@@ -994,35 +1307,97 @@ export default function AdminPage() {
                     🎯 Auction Control
                   </h2>
 
-                  {/* STEP 1: Select Player (IDLE/SOLD) - Random Only */}
+                  {/* STEP 1: Select Player (IDLE/SOLD) */}
                   {(state.status === 'IDLE' || state.status === 'SOLD') && (
-                    <div className="space-y-4">
-                      <div className="text-center mb-4">
-                        <span className="text-sm text-white/50">Step 1 of 3</span>
-                        <h3 className="text-lg font-semibold text-white mt-1">Pick Next Player</h3>
-                        <p className="text-xs text-white/40 mt-1">Random selection only • Use Joker Card in sidebar for specific player requests</p>
-                      </div>
+                    <>
+                      {/* Last 25% Interface */}
+                      {isLastQuarter ? (
+                        <div className="space-y-4">
+                          <div className="text-center mb-4">
+                            <span className="text-sm text-white/50">Final Phase</span>
+                            <h3 className="text-lg font-semibold text-white mt-1">
+                              🎯 Final Phase: {availablePlayers.length} Players Remaining
+                            </h3>
+                            <p className="text-xs text-white/40 mt-1">Select directly or use random pick</p>
+                          </div>
 
-                      <button
-                        onClick={handleRandomPlayer}
-                        disabled={loading || (availablePlayers.length === 0 && unsoldPlayers.length === 0)}
-                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors text-lg relative"
-                      >
-                        {loading ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Selecting...
-                          </span>
-                        ) : (
-                          <>
-                            🎲 Pick Random Player
-                            {(availablePlayers.length === 0 && unsoldPlayers.length === 0) && (
-                              <span className="block text-xs mt-1 opacity-75">No players available</span>
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-96 overflow-y-auto mb-4 p-2 border-2 border-orange-500/30 rounded-xl">
+                            {playersForLastQuarterGrid.map(player => {
+                              const isUnsold = state.unsoldPlayers?.includes(player.id);
+                              return (
+                              <button
+                                key={player.id}
+                                onClick={() => {
+                                  setSelectedPlayerId(player.id);
+                                  performAction('START_AUCTION', { playerId: player.id });
+                                }}
+                                disabled={loading}
+                                className={`p-3 rounded-lg text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 ${
+                                  isUnsold 
+                                    ? 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30' 
+                                    : 'bg-white/5 hover:bg-white/10 border border-white/20'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-lg">{getRoleIcon(player.role)}</span>
+                                  <span className="font-semibold text-white text-sm truncate">{player.name}</span>
+                                  {isUnsold && <span className="text-xs bg-amber-500/30 text-amber-300 px-1 py-0.5 rounded">⚠️</span>}
+                                </div>
+                                <div className="text-xs text-white/50">{player.role}</div>
+                                {player.category === 'APLUS' && (
+                                  <span className="text-xs bg-amber-500/30 text-amber-300 px-1 py-0.5 rounded mt-1 inline-block">⭐</span>
+                                )}
+                              </button>
+                              );
+                            })}
+                          </div>
+
+                          <button
+                            onClick={handleRandomPlayer}
+                            disabled={loading || availablePlayers.length === 0}
+                            className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors"
+                          >
+                            {loading ? (
+                              <span className="flex items-center justify-center gap-2">
+                                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Selecting...
+                              </span>
+                            ) : (
+                              '🎲 Or Pick Random'
                             )}
-                          </>
-                        )}
-                      </button>
-                    </div>
+                          </button>
+                        </div>
+                      ) : (
+                        /* Normal Random Only Interface */
+                        <div className="space-y-4">
+                          <div className="text-center mb-4">
+                            <span className="text-sm text-white/50">Step 1 of 3</span>
+                            <h3 className="text-lg font-semibold text-white mt-1">Pick Next Player</h3>
+                            <p className="text-xs text-white/40 mt-1">Random selection only • Use Joker Card in sidebar for specific player requests</p>
+                          </div>
+
+                          <button
+                            onClick={handleRandomPlayer}
+                            disabled={loading || (availablePlayers.length === 0 && unsoldPlayers.length === 0)}
+                            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-colors text-lg relative"
+                          >
+                            {loading ? (
+                              <span className="flex items-center justify-center gap-2">
+                                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Selecting...
+                              </span>
+                            ) : (
+                              <>
+                                🎲 Pick Random Player
+                                {(availablePlayers.length === 0 && unsoldPlayers.length === 0) && (
+                                  <span className="block text-xs mt-1 opacity-75">No players available</span>
+                                )}
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* STEP 2: Price & Team (LIVE) */}
@@ -1241,6 +1616,11 @@ export default function AdminPage() {
                     <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                       ⚠️ Unsold Players ({unsoldPlayers.length})
                     </h2>
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-amber-300 font-semibold">
+                        ⚠️ These players are excluded from random pick and can only be re-auctioned via Joker Card or manual selection
+                      </p>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {unsoldPlayers.map(player => (
                         <UnsoldPlayerCard
@@ -1254,9 +1634,13 @@ export default function AdminPage() {
                         />
                       ))}
                     </div>
-                    <p className="text-xs text-white/40 mt-4">
-                      💡 These players can be re-auctioned using the Joker Card or Random selection
-                    </p>
+                    {isLastQuarter && (
+                      <div className="mt-4 p-3 bg-white/5 rounded-lg">
+                        <p className="text-xs text-white/60">
+                          💡 In final phase, you can also select unsold players directly from the grid above
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </>

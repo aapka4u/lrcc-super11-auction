@@ -3,17 +3,27 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { TEAMS, TEAM_LEADERS, PLAYERS } from '@/lib/data';
+import { TEAMS } from '@/lib/data';
 import { Player } from '@/lib/types';
 
 interface TeamProfile {
   logo?: string;
 }
 
-interface AuctionState {
-  rosters: Record<string, string[]>;
+interface TeamFromAPI {
+  id: string;
+  name: string;
+  color: string;
+  captain: string;
+  viceCaptain: string;
+  roster: Player[];
+  captainPlayer?: Player;
+  viceCaptainPlayer?: Player;
+}
+
+interface APIResponse {
+  teams: TeamFromAPI[];
   soldPrices: Record<string, number>;
-  teamSpent: Record<string, number>;
   teamProfiles?: Record<string, TeamProfile>;
 }
 
@@ -30,9 +40,9 @@ function getRoleIcon(role?: string): string {
 export default function TeamCardPage() {
   const params = useParams();
   const teamId = params.teamId as string;
-  const team = TEAMS.find(t => t.id === teamId);
+  const teamStatic = TEAMS.find(t => t.id === teamId);
 
-  const [auctionState, setAuctionState] = useState<AuctionState | null>(null);
+  const [apiData, setApiData] = useState<APIResponse | null>(null);
   const [teamProfile, setTeamProfile] = useState<TeamProfile>({});
 
   useEffect(() => {
@@ -40,7 +50,7 @@ export default function TeamCardPage() {
       try {
         const res = await fetch('/api/state');
         const data = await res.json();
-        setAuctionState(data);
+        setApiData(data);
         if (data.teamProfiles?.[teamId]) {
           setTeamProfile(data.teamProfiles[teamId]);
         }
@@ -51,7 +61,7 @@ export default function TeamCardPage() {
     fetchState();
   }, [teamId]);
 
-  if (!team) {
+  if (!teamStatic) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -64,7 +74,11 @@ export default function TeamCardPage() {
     );
   }
 
-  // Get roster players and sort by role: Batsman/WK-Batsman -> All-rounder -> Bowler
+  // Get team from API response (has roster with images)
+  const teamFromAPI = apiData?.teams?.find(t => t.id === teamId);
+  const team = teamFromAPI || teamStatic;
+
+  // Get roster players sorted by role: Batsman/WK-Batsman -> All-rounder -> Bowler
   const roleOrder: Record<string, number> = {
     'Batsman': 1,
     'WK-Batsman': 2,
@@ -72,23 +86,19 @@ export default function TeamCardPage() {
     'Bowler': 4,
   };
 
-  const rosterPlayerIds = auctionState?.rosters[teamId] || [];
-  const rosterPlayers = rosterPlayerIds
-    .map(id => PLAYERS.find(p => p.id === id))
-    .filter((p): p is Player => p !== undefined)
+  const rosterPlayers = (teamFromAPI?.roster || [])
+    .slice()
     .sort((a, b) => (roleOrder[a.role || ''] || 99) - (roleOrder[b.role || ''] || 99));
 
-  // Get captain and VC
-  const captain = TEAM_LEADERS.find(p => p.teamId === teamId && p.category === 'CAPTAIN');
-  const viceCaptain = TEAM_LEADERS.find(p => p.teamId === teamId && p.category === 'VICE_CAPTAIN');
+  // Get captain and VC from API (with images)
+  const captain = teamFromAPI?.captainPlayer;
+  const viceCaptain = teamFromAPI?.viceCaptainPlayer;
 
   const totalPlayers = 2 + rosterPlayers.length;
-  const budget = team.budget;
-  const spent = auctionState?.teamSpent[teamId] || 0;
 
   const handleShare = async () => {
     const shareUrl = window.location.href;
-    const shareText = `🏏 ${team.name}\n\nLRCC Super 11 League 2026\n\n👨‍✈️ Captain: ${team.captain}\n🎖️ Vice Captain: ${team.viceCaptain}\n\n👥 Squad: ${totalPlayers}/8 players\n💰 Spent: ${spent.toLocaleString()}/${budget.toLocaleString()}\n\nWatch the auction live!`;
+    const shareText = `🏏 ${team.name}\n\nLRCC Super 11 League 2026\n\n👨‍✈️ Captain: ${team.captain}\n🎖️ Vice Captain: ${team.viceCaptain}\n\n👥 Squad: ${totalPlayers} players`;
 
     if (navigator.share) {
       try {
@@ -160,20 +170,9 @@ export default function TeamCardPage() {
             </div>
           </div>
 
-          {/* Stats */}
-          <div className="px-6 py-4 flex justify-around border-t border-white/10">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white">{totalPlayers}</div>
-              <div className="text-xs text-white/50">Players</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white font-mono">{spent.toLocaleString()}</div>
-              <div className="text-xs text-white/50">Spent</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white font-mono">{(budget - spent).toLocaleString()}</div>
-              <div className="text-xs text-white/50">Remaining</div>
-            </div>
+          {/* Player Count */}
+          <div className="px-6 py-3 text-center border-t border-white/10">
+            <span className="text-white/60 text-sm">{totalPlayers} Players</span>
           </div>
 
           {/* Squad List */}
@@ -210,19 +209,6 @@ export default function TeamCardPage() {
                   {player.category === 'APLUS' && (
                     <span className="text-amber-400 text-sm">⭐</span>
                   )}
-                  <span className="text-white/50 font-mono text-sm">
-                    {auctionState?.soldPrices[player.id]?.toLocaleString() || '-'}
-                  </span>
-                </div>
-              ))}
-
-              {/* Empty slots */}
-              {Array.from({ length: 6 - rosterPlayers.length }).map((_, i) => (
-                <div key={`empty-${i}`} className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2.5 opacity-30">
-                  <span className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-white/30 text-xs">
-                    {rosterPlayers.length + i + 1}
-                  </span>
-                  <span className="text-white/30 italic">Awaiting pick...</span>
                 </div>
               ))}
             </div>

@@ -9,11 +9,21 @@ A real-time cricket player auction display system for a local cricket league. Th
 ### Live URLs
 - **Landing Page**: https://draftcast.app
 - **Public Auction**: https://draftcast.app/lrccsuper11
-- **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
+- **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 1199)
 - **All Players**: https://draftcast.app/lrccsuper11/players
 - **Broadcast Mode**: https://draftcast.app/lrccsuper11/broadcast (full-screen display)
 - **Intelligence Panel**: https://draftcast.app/lrccsuper11/intelligence (Password: boomgaard)
 - **GitHub**: https://github.com/aapka4u/lrcc-super11-auction
+
+### Team Pages (Public - No Auth Required)
+| Team | Team Page | Team Card |
+|------|-----------|-----------|
+| Team Sree & Naveen | /lrccsuper11/team/team_sree_naveen | /lrccsuper11/team/team_sree_naveen/card |
+| Team Sathish & Mehul | /lrccsuper11/team/team_sathish_mehul | /lrccsuper11/team/team_sathish_mehul/card |
+| Team Rohit & Praveen | /lrccsuper11/team/team_rohit_praveen | /lrccsuper11/team/team_rohit_praveen/card |
+| Team Rajul & Kathir | /lrccsuper11/team/team_rajul_kathir | /lrccsuper11/team/team_rajul_kathir/card |
+| Team Vaibhav & Sasi | /lrccsuper11/team/team_vaibhav_sasi | /lrccsuper11/team/team_vaibhav_sasi/card |
+| Team Murali & Paddy | /lrccsuper11/team/team_murali_paddy | /lrccsuper11/team/team_murali_paddy/card |
 
 ## Tech Stack
 
@@ -35,10 +45,18 @@ app/
 │   ├── admin/page.tsx    # Admin control panel (PIN protected)
 │   ├── broadcast/page.tsx # Full-screen broadcast display
 │   ├── intelligence/page.tsx # Bid prediction intelligence panel
-│   └── players/page.tsx  # All players list with search/filter
+│   ├── players/page.tsx  # All players list with search/filter
+│   ├── player/[id]/      # Individual player profile page
+│   │   ├── page.tsx      # Player page with metadata
+│   │   └── PlayerProfile.tsx # Player profile component with photo upload
+│   └── team/[teamId]/    # Team pages (public, no auth)
+│       ├── page.tsx      # Team page with roster, logo upload, share options
+│       └── card/page.tsx # Shareable team card
 └── api/
     ├── state/route.ts    # Main auction state API (GET/POST)
-    └── players/route.ts  # Player profiles API (images, CricHeroes links)
+    ├── players/route.ts  # Player profiles API (images, CricHeroes links)
+    ├── players/self-upload/route.ts # Player self-upload photo (no auth)
+    └── team-profile/route.ts # Team logo upload API (no auth)
 
 components/
 ├── AuctionStatus.tsx     # Live auction status display (IDLE/LIVE/SOLD/PAUSED)
@@ -198,11 +216,24 @@ Update player profile (requires PIN):
 ### DELETE /api/players
 Remove player profile field (requires PIN)
 
+### POST /api/players/self-upload
+Player self-upload photo (NO authentication required):
+- Upload image (base64, max 1MB)
+- Just needs playerId and image
+- Anyone can upload photos for any player
+
+### POST /api/team-profile
+Team logo upload (NO authentication required):
+- Upload team logo (base64, max 1MB)
+- Just needs teamId and logo
+- Anyone can upload logos for any team
+
 ## KV Storage Keys
 
 ```typescript
 const STATE_KEY = 'auction:state';      // AuctionState object
 const PROFILES_KEY = 'player:profiles'; // Record<playerId, PlayerProfile>
+const TEAM_PROFILES_KEY = 'team:profiles'; // Record<teamId, { logo?: string }>
 ```
 
 ## Environment Variables
@@ -275,10 +306,34 @@ Shows team information:
 ## Player Image Handling
 
 Images are stored in KV as base64 strings or external URLs. The flow:
-1. Admin uploads image in Profiles tab (max 1MB)
+1. Anyone can upload image via player page or admin Profiles tab (max 1MB)
 2. Saved to `player:profiles` in KV
-3. `/api/state` merges profiles with static player data
+3. `/api/state` merges profiles with static player data via `mergeProfile()`
 4. Components display image or fall back to initials
+
+**Self-Upload**: Players can upload their own photos at `/lrccsuper11/player/[id]?upload=true` - no verification required.
+
+## Team Page Features
+
+Team pages are **public with no authentication**:
+
+### Team Page (`/lrccsuper11/team/[teamId]`)
+- Team header with logo (uploadable by anyone)
+- Squad list with players sorted by role (Batsmen → WK → All-rounders → Bowlers)
+- Player names are clickable links to player profiles
+- Camera icons for quick photo upload access
+- "Share Your Team" section with:
+  - **Team Story**: 15-second animated video with confetti
+  - **Team Card**: Static shareable card
+
+### Team Card (`/lrccsuper11/team/[teamId]/card`)
+- Shareable team card with squad list
+- Share button for WhatsApp
+
+### Privacy Notes
+- **Prices are hidden** on public pages (team page, player page, team card)
+- Only admin panel shows sold prices
+- Budget information removed from public team pages (auction is over)
 
 ## Important Implementation Notes
 
