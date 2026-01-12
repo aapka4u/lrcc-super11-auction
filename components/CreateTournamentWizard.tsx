@@ -152,9 +152,9 @@ export function CreateTournamentWizard({ onSuccess }: CreateTournamentWizardProp
     if (step === 3) {
       if (!formData.adminPin || formData.adminPin.length < 4) {
         errors.adminPin = 'PIN must be at least 4 characters';
-      } else if (pinStrength.strength === 'weak') {
-        errors.adminPin = 'PIN is too weak. ' + pinStrength.feedback[0];
       }
+      // Note: We don't enforce strength requirements - 4+ characters is sufficient
+      // The strength indicator is shown for user guidance only
     }
 
     setFieldErrors(errors);
