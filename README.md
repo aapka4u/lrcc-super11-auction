@@ -7,6 +7,8 @@ A real-time auction display board for cricket player auctions. Viewers on mobile
 ## Live URLs
 
 - **Landing Page**: https://draftcast.app
+- **Tournament Management**: https://draftcast.app/tournaments
+- **Create Tournament**: https://draftcast.app/tournaments/new
 - **Public Auction**: https://draftcast.app/lrccsuper11
 - **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
 - **All Players**: https://draftcast.app/lrccsuper11/players
@@ -16,6 +18,20 @@ A real-time auction display board for cricket player auctions. Viewers on mobile
 
 ## Features
 
+### Tournament Management (NEW!)
+- **Tournament Dashboard** (`/tournaments`): Browse all published tournaments with search and filtering
+- **Create Tournament** (`/tournaments/new`): 5-step wizard to create new tournaments:
+  1. Basic Information (name, slug, sport)
+  2. Details (dates, location, description)
+  3. Security (admin PIN with strength indicator)
+  4. Theme (colors, logo)
+  5. Review & Submit
+- **Tournament View** (`/tournaments/[slug]`): Public tournament details page
+- **Auto-save Drafts**: Form progress automatically saved to localStorage
+- **Slug Availability Check**: Real-time validation of tournament IDs
+- **Mobile-First Design**: Fully responsive with touch-friendly controls
+
+### Auction Features
 - **Landing Page** (`/`): DraftCast platform landing with active events
 - **Public Display** (`/lrccsuper11`): Shows live auction status, team rosters building up
 - **Broadcast Mode** (`/lrccsuper11/broadcast`): Full-screen display for big screens/projectors
@@ -73,12 +89,25 @@ git push -u origin main
 ### Step 4: Test It!
 
 - **Public view**: `https://your-app.vercel.app`
-- **Admin panel**: `https://your-app.vercel.app/admin`
+- **Tournament management**: `https://your-app.vercel.app/tournaments`
+- **Admin panel**: `https://your-app.vercel.app/lrccsuper11/admin`
 - **Admin PIN**: `2237`
 
-## How to Use (During Auction)
+## How to Use
 
-### Admin Workflow:
+### Creating a Tournament
+
+1. Go to `/tournaments/new`
+2. Fill out the 5-step wizard:
+   - **Step 1**: Enter tournament name (slug auto-generates), select sport
+   - **Step 2**: Add dates, location, description (optional)
+   - **Step 3**: Set admin PIN (strength indicator shows security level)
+   - **Step 4**: Choose theme colors and upload logo (optional)
+   - **Step 5**: Review and submit
+3. Your draft is auto-saved every 30 seconds
+4. After creation, you'll be redirected to the admin panel
+
+### Admin Workflow (During Auction):
 
 1. Open `/lrccsuper11/admin` on your phone/laptop
 2. Enter PIN: `2237`
@@ -121,7 +150,7 @@ All player and team data is pre-configured:
 | Team Rohit & Praveen | Rohit | Praveen | ₹11,500 |
 | Octo-Pace | Rajul | Kathir | ₹11,500 |
 | Team Vaibhav & Sasi | Vaibhav | Sasi | ₹11,500 |
-| Team Murali & Paddy | Murali | KP Paddy | ₹12,500 |
+| Team Murali & Paddy | Murali | KP Paddy | **₹12,500** |
 
 ## Troubleshooting
 
@@ -130,18 +159,46 @@ All player and team data is pre-configured:
 - Redeploy after connecting KV
 
 ### Admin page not working
-- Make sure you're using PIN: `2237`
+- Make sure you're using the correct PIN for your tournament
 - Clear browser cache and try again
 
 ### Changes not appearing
-- Page auto-refreshes every 2 seconds
+- Page auto-refreshes every 1-2 seconds
 - If stuck, manually refresh the page
+
+### Tournament creation fails
+- Check slug availability (must be unique)
+- Ensure PIN is at least 4 characters
+- Verify all required fields are filled
 
 ## Platform
 
 Built on modern web technologies with cloud-hosted infrastructure.
 
 ## API Endpoints
+
+### Tournament Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/tournaments` | GET | List all published tournaments |
+| `/api/tournaments` | POST | Create new tournament |
+| `/api/tournaments/[tournamentId]` | GET | Get tournament details |
+| `/api/tournaments/[tournamentId]` | PUT | Update tournament (admin) |
+| `/api/tournaments/[tournamentId]` | DELETE | Delete tournament (admin) |
+
+### Auction Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/[tournamentId]/state` | GET | Get current auction state |
+| `/api/[tournamentId]/state` | POST | Update auction state (admin actions) |
+| `/api/[tournamentId]/players` | GET | Get all players with profiles |
+| `/api/[tournamentId]/players` | POST | Update player profile (admin) |
+| `/api/[tournamentId]/teams` | GET | Get all teams |
+| `/api/[tournamentId]/teams` | POST | Update team (admin) |
+
+### Legacy Endpoints (LRCC)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -156,30 +213,64 @@ Built on modern web technologies with cloud-hosted infrastructure.
 
 ```
 app/
-├── page.tsx              # DraftCast landing page
-├── layout.tsx            # Root layout with metadata
-├── health/page.tsx       # Health check endpoint
-├── lrccsuper11/          # LRCC + Super 11 event
-│   ├── page.tsx          # Public auction display
-│   ├── admin/page.tsx    # Admin control panel
-│   ├── broadcast/page.tsx # Full-screen broadcast display
-│   ├── intelligence/page.tsx # Bid prediction panel
-│   └── players/page.tsx  # All players list
+├── page.tsx                    # DraftCast landing page
+├── layout.tsx                  # Root layout with metadata
+├── health/page.tsx             # Health check endpoint
+├── tournaments/                # Tournament management (NEW!)
+│   ├── page.tsx                # Tournament dashboard/list
+│   ├── new/page.tsx            # Create tournament wizard
+│   └── [slug]/page.tsx         # Tournament public view
+├── lrccsuper11/               # LRCC + Super 11 event
+│   ├── page.tsx                # Public auction display
+│   ├── admin/page.tsx          # Admin control panel
+│   ├── broadcast/page.tsx      # Full-screen broadcast display
+│   ├── intelligence/page.tsx   # Bid prediction panel
+│   └── players/page.tsx        # All players list
 └── api/
-    ├── state/route.ts    # Auction state API (GET/POST)
-    └── players/route.ts  # Player profiles API
+    ├── tournaments/             # Tournament management API
+    │   ├── route.ts            # List/create tournaments
+    │   └── [tournamentId]/route.ts # Tournament CRUD
+    ├── [tournamentId]/         # Scoped tournament APIs
+    │   ├── state/route.ts      # Auction state
+    │   ├── players/route.ts    # Player management
+    │   └── teams/route.ts      # Team management
+    ├── state/route.ts           # Legacy auction state API
+    └── players/route.ts         # Legacy player profiles API
 
 components/
-├── AuctionStatus.tsx     # Live auction status display
-├── TeamCard.tsx          # Team roster card with budgets
-├── TeamTeaser.tsx        # Team reveal teaser animation
-├── TeamStoryVideo.tsx    # Team story video generation
-└── IntelligencePanel.tsx # Bid prediction and strategy
+├── TournamentCard.tsx           # Tournament card component (NEW!)
+├── TournamentCardSkeleton.tsx  # Loading skeleton (NEW!)
+├── CreateTournamentWizard.tsx  # Tournament creation wizard (NEW!)
+├── FloatingActionButton.tsx    # Mobile FAB component (NEW!)
+├── Toast.tsx                   # Toast notifications (NEW!)
+├── ErrorBoundary.tsx           # Error boundary component
+├── AuctionStatus.tsx           # Live auction status display
+├── TeamCard.tsx                # Team roster card with budgets
+├── TeamTeaser.tsx              # Team reveal teaser animation
+├── TeamStoryVideo.tsx          # Team story video generation
+└── IntelligencePanel.tsx       # Bid prediction and strategy
+
+hooks/
+├── useTournamentDraft.ts       # Draft auto-save hook (NEW!)
+├── useSlugAvailability.ts     # Slug availability check (NEW!)
+└── usePinStrength.ts           # PIN strength calculator (NEW!)
 
 lib/
-├── data.ts               # Player & team data, calculateMaxBid()
-├── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
-└── intelligence.ts       # Bid prediction algorithms
+├── api/
+│   └── tournaments.ts          # Tournament API client (NEW!)
+├── utils/
+│   └── share.ts                # Share utilities (NEW!)
+├── schemas.ts                  # Zod validation schemas
+├── form-validation.ts          # Form validation utilities (NEW!)
+├── swr-config.ts               # SWR configuration (NEW!)
+├── data.ts                     # Player & team data, calculateMaxBid()
+├── types.ts                    # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
+├── intelligence.ts             # Bid prediction algorithms
+├── tournament-types.ts         # Tournament type definitions (NEW!)
+├── tournament-storage.ts       # Tournament storage helpers (NEW!)
+├── tournament-auth.ts          # Tournament authentication (NEW!)
+├── tournament-lifecycle.ts    # Tournament lifecycle management (NEW!)
+└── tournament-validation.ts    # Tournament validation (NEW!)
 ```
 
 ## Local Development
@@ -193,6 +284,33 @@ Note: For local dev, you'll need to link Vercel KV:
 ```bash
 vercel link
 vercel env pull
+```
+
+## Testing
+
+```bash
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report
+```
+
+## Build & Deploy
+
+```bash
+npm run build        # Check for errors
+git add . && git commit -m "message"
+git push             # Auto-deploys to Vercel
+```
+
+## Reset Auction Data
+
+In admin panel: Danger Zone → Reset Entire Auction (type "RESET")
+
+Or via API:
+```bash
+curl -X POST https://draftcast.app/api/state \
+  -H "Content-Type: application/json" \
+  -d '{"pin":"2237","action":"RESET","confirmReset":true}'
 ```
 
 ---

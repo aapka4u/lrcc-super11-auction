@@ -6,10 +6,14 @@ This file provides comprehensive context about **DraftCast** - a live auction br
 
 A real-time cricket player auction display system for a local cricket league. The auctioneer uses an admin panel to control the auction flow, while viewers (the 48 players) watch live updates on their devices.
 
+**NEW**: Multi-tournament support with tournament management UI for creating and managing multiple tournaments.
+
 ### Live URLs
 - **Landing Page**: https://draftcast.app
+- **Tournament Dashboard**: https://draftcast.app/tournaments
+- **Create Tournament**: https://draftcast.app/tournaments/new
 - **Public Auction**: https://draftcast.app/lrccsuper11
-- **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 1199)
+- **Admin Panel**: https://draftcast.app/lrccsuper11/admin (PIN: 2237)
 - **All Players**: https://draftcast.app/lrccsuper11/players
 - **Broadcast Mode**: https://draftcast.app/lrccsuper11/broadcast (full-screen display)
 - **Intelligence Panel**: https://draftcast.app/lrccsuper11/intelligence (Password: boomgaard)
@@ -32,46 +36,209 @@ A real-time cricket player auction display system for a local cricket league. Th
 - **Styling**: Tailwind CSS with glass morphism dark theme
 - **Language**: TypeScript
 - **Deployment**: Vercel
+- **Data Fetching**: SWR for client-side data fetching
+- **Validation**: Zod for runtime schema validation
 
 ## Project Structure
 
 ```
 app/
-├── page.tsx              # DraftCast landing page
-├── layout.tsx            # Root layout with metadata
-├── health/page.tsx       # Health check endpoint
-├── lrccsuper11/          # LRCC + Super 11 event
-│   ├── page.tsx          # Public auction display (main viewer page)
-│   ├── admin/page.tsx    # Admin control panel (PIN protected)
-│   ├── broadcast/page.tsx # Full-screen broadcast display
-│   ├── intelligence/page.tsx # Bid prediction intelligence panel
-│   ├── players/page.tsx  # All players list with search/filter
-│   ├── player/[id]/      # Individual player profile page
-│   │   ├── page.tsx      # Player page with metadata
-│   │   └── PlayerProfile.tsx # Player profile component with photo upload
-│   └── team/[teamId]/    # Team pages (public, no auth)
-│       ├── page.tsx      # Team page with roster, logo upload, share options
-│       └── card/page.tsx # Shareable team card
+├── page.tsx                    # DraftCast landing page (updated with tournament links)
+├── layout.tsx                  # Root layout with metadata
+├── health/page.tsx             # Health check endpoint
+├── tournaments/                # Tournament management (NEW!)
+│   ├── page.tsx                # Tournament dashboard/list with search
+│   ├── new/page.tsx            # Create tournament wizard (5-step form)
+│   └── [slug]/page.tsx         # Tournament public view page
+├── lrccsuper11/               # LRCC + Super 11 event (legacy)
+│   ├── page.tsx                # Public auction display (main viewer page)
+│   ├── admin/page.tsx          # Admin control panel (PIN protected)
+│   ├── broadcast/page.tsx       # Full-screen broadcast display
+│   ├── intelligence/page.tsx   # Bid prediction intelligence panel
+│   ├── players/page.tsx        # All players list with search/filter
+│   ├── player/[id]/            # Individual player profile page
+│   │   ├── page.tsx            # Player page with metadata
+│   │   └── PlayerProfile.tsx   # Player profile component with photo upload
+│   └── team/[teamId]/          # Team pages (public, no auth)
+│       ├── page.tsx            # Team page with roster, logo upload, share options
+│       └── card/page.tsx      # Shareable team card
 └── api/
-    ├── state/route.ts    # Main auction state API (GET/POST)
-    ├── players/route.ts  # Player profiles API (images, CricHeroes links)
+    ├── tournaments/            # Tournament management API (NEW!)
+    │   ├── route.ts            # GET (list), POST (create)
+    │   └── [tournamentId]/route.ts # GET, PUT, DELETE (CRUD operations)
+    ├── [tournamentId]/         # Scoped tournament APIs (NEW!)
+    │   ├── state/route.ts      # Tournament-specific auction state
+    │   ├── players/route.ts    # Tournament-specific player management
+    │   └── teams/route.ts      # Tournament-specific team management
+    ├── state/route.ts           # Legacy auction state API (GET/POST)
+    ├── players/route.ts         # Legacy player profiles API
     ├── players/self-upload/route.ts # Player self-upload photo (no auth)
-    └── team-profile/route.ts # Team logo upload API (no auth)
+    └── team-profile/route.ts   # Team logo upload API (no auth)
 
 components/
-├── AuctionStatus.tsx     # Live auction status display (IDLE/LIVE/SOLD/PAUSED)
-├── TeamCard.tsx          # Team roster card with budget info
-├── TeamTeaser.tsx        # Team reveal teaser animation
-├── TeamStoryVideo.tsx    # Team story video generation
-└── IntelligencePanel.tsx # Auction bid prediction and strategy recommendations
+├── TournamentCard.tsx           # Tournament card with status badge (NEW!)
+├── TournamentCardSkeleton.tsx  # Loading skeleton for tournament cards (NEW!)
+├── CreateTournamentWizard.tsx  # 5-step tournament creation wizard (NEW!)
+├── FloatingActionButton.tsx    # Mobile-first FAB component (NEW!)
+├── Toast.tsx                   # Toast notification system (NEW!)
+├── ErrorBoundary.tsx           # Error boundary for graceful error handling
+├── AuctionStatus.tsx           # Live auction status display (IDLE/LIVE/SOLD/PAUSED)
+├── TeamCard.tsx                # Team roster card with budget info
+├── TeamTeaser.tsx              # Team reveal teaser animation
+├── TeamStoryVideo.tsx          # Team story video generation
+└── IntelligencePanel.tsx      # Auction bid prediction and strategy recommendations
+
+hooks/
+├── useTournamentDraft.ts       # Auto-save draft functionality (NEW!)
+├── useSlugAvailability.ts     # Real-time slug availability checking (NEW!)
+└── usePinStrength.ts           # PIN strength calculator (NEW!)
 
 lib/
-├── data.ts               # Player & team static data, calculateMaxBid()
-├── types.ts              # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
-└── intelligence.ts       # Bid prediction engine, role gap analysis, strategic recommendations
+├── api/
+│   └── tournaments.ts          # Tournament API client functions (NEW!)
+├── utils/
+│   └── share.ts                # Share/copy utilities (NEW!)
+├── schemas.ts                  # Zod schemas for validation
+├── form-validation.ts          # Form validation utilities (NEW!)
+├── swr-config.ts               # SWR configuration (NEW!)
+├── data.ts                     # Player & team static data, calculateMaxBid()
+├── types.ts                    # TypeScript interfaces, BASE_PRICES, TEAM_SIZE
+├── intelligence.ts             # Bid prediction engine, role gap analysis
+├── tournament-types.ts         # Tournament type definitions (NEW!)
+├── tournament-storage.ts       # Tournament storage helpers (NEW!)
+├── tournament-auth.ts          # Tournament authentication (JWT, PIN hashing) (NEW!)
+├── tournament-lifecycle.ts    # Tournament lifecycle management (NEW!)
+└── tournament-validation.ts   # Tournament validation utilities (NEW!)
+```
+
+## Tournament Management (NEW!)
+
+### Tournament Creation Flow
+
+1. **Landing Page** (`/`) → Shows featured tournaments + CTAs
+2. **Tournament Dashboard** (`/tournaments`) → Browse/search all tournaments
+3. **Create Tournament** (`/tournaments/new`) → 5-step wizard:
+   - Step 1: Basic Info (name, slug, sport)
+   - Step 2: Details (dates, location, description)
+   - Step 3: Security (admin PIN with strength indicator)
+   - Step 4: Theme (colors, logo)
+   - Step 5: Review & Submit
+4. **Tournament View** (`/tournaments/[slug]`) → Public tournament page
+
+### Tournament Wizard Features
+
+- **Auto-save Drafts**: Form progress saved to localStorage every 30 seconds
+- **Slug Auto-generation**: Automatically generates slug from tournament name
+- **Real-time Slug Validation**: Checks availability as you type (debounced 500ms)
+- **PIN Strength Indicator**: Visual feedback on PIN security
+- **Smart Defaults**: Pre-filled sensible defaults (sport: Cricket, dates, etc.)
+- **Mobile-First Design**: Touch-friendly controls, safe area padding
+- **Error Handling**: Inline validation, toast notifications, rate limit handling
+
+### Tournament API Endpoints
+
+#### GET /api/tournaments
+Returns list of published tournaments (for discovery):
+```typescript
+{
+  tournaments: TournamentIndexEntry[];
+  count: number;
+}
+```
+
+#### POST /api/tournaments
+Create new tournament:
+```typescript
+{
+  slug: string;           // Unique tournament ID
+  name: string;           // Tournament name
+  description?: string;
+  adminPin: string;       // 4-20 characters
+  sport?: string;
+  location?: string;
+  startDate?: number;     // Timestamp
+  endDate?: number;       // Timestamp
+  logo?: string;          // HTTPS URL
+  theme?: {
+    primaryColor: string;  // Hex color
+    secondaryColor: string; // Hex color
+  };
+  settings?: TournamentSettings;
+}
+```
+
+#### GET /api/tournaments/[tournamentId]
+Get tournament details (public info only, unless authenticated):
+```typescript
+{
+  tournament: Tournament;
+}
+```
+
+#### PUT /api/tournaments/[tournamentId]
+Update tournament (requires admin auth):
+```typescript
+{
+  name?: string;
+  description?: string;
+  published?: boolean;
+  // ... other fields
+}
+```
+
+#### DELETE /api/tournaments/[tournamentId]
+Delete tournament (requires admin auth, only if draft status)
+
+### Tournament Storage Keys
+
+```typescript
+const TOURNAMENT_CONFIG_KEY = `tournament:${tournamentId}:config`;
+const TOURNAMENT_STATE_KEY = `tournament:${tournamentId}:state`;
+const TOURNAMENT_INDEX_KEY = 'tournament:index';
+const TOURNAMENT_PLAYERS_KEY = `tournament:${tournamentId}:players`;
+const TOURNAMENT_TEAMS_KEY = `tournament:${tournamentId}:teams`;
 ```
 
 ## Key Data Structures
+
+### Tournament Types
+
+```typescript
+export type TournamentStatus = 'draft' | 'lobby' | 'active' | 'completed' | 'archived';
+
+export interface Tournament {
+  id: string;                    // User-defined slug
+  name: string;
+  description?: string;
+  status: TournamentStatus;
+  published: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastActivityAt: number;
+  expiresAt: number;             // createdAt + 90 days
+  settings: TournamentSettings;
+  adminPinHash: string;         // Hashed PIN
+  sport?: string;
+  location?: string;
+  startDate?: number;
+  endDate?: number;
+  logo?: string;
+  theme?: TournamentTheme;
+  archived: boolean;
+}
+
+export interface TournamentIndexEntry {
+  id: string;
+  name: string;
+  status: TournamentStatus;
+  published: boolean;
+  sport?: string;
+  location?: string;
+  startDate?: number;
+  logo?: string;
+  createdAt: number;
+}
+```
 
 ### Teams (6 total)
 Each team has a captain and vice-captain already assigned (not in auction pool).
@@ -187,13 +354,66 @@ Each team must have exactly 3 Super11 players:
 
 ## API Endpoints
 
-### GET /api/state
+### Tournament Management APIs
+
+#### GET /api/tournaments
+Returns published tournaments for discovery:
+- No authentication required
+- Returns `TournamentIndexEntry[]` (limited fields)
+
+#### POST /api/tournaments
+Create new tournament:
+- Rate limited (5 per hour per IP)
+- Requires `CreateTournamentInput` schema
+- Returns tournament + master admin token
+
+#### GET /api/tournaments/[tournamentId]
+Get tournament details:
+- Public tournaments: Returns limited info
+- Draft tournaments: Requires admin auth
+- Returns full `Tournament` object
+
+#### PUT /api/tournaments/[tournamentId]
+Update tournament:
+- Requires admin authentication (PIN, session token, or master token)
+- Only draft tournaments can be fully modified
+- Published tournaments have limited editable fields
+
+#### DELETE /api/tournaments/[tournamentId]
+Delete tournament:
+- Requires admin authentication
+- Only draft tournaments can be deleted
+- Soft delete (archives tournament)
+
+### Scoped Tournament APIs
+
+#### GET /api/[tournamentId]/state
+Get tournament-specific auction state (replaces legacy `/api/state`)
+
+#### POST /api/[tournamentId]/state
+Update tournament-specific auction state (admin actions)
+
+#### GET /api/[tournamentId]/players
+Get tournament-specific players
+
+#### POST /api/[tournamentId]/players
+Update tournament-specific player profiles
+
+#### GET /api/[tournamentId]/teams
+Get tournament-specific teams
+
+#### POST /api/[tournamentId]/teams
+Update tournament-specific teams
+
+### Legacy APIs (LRCC)
+
+#### GET /api/state
 Returns public auction state including:
 - Current status and player
 - All teams with rosters, budgets, max bids
 - Sold prices for each player
 
-### POST /api/state
+#### POST /api/state
 Admin actions (requires PIN):
 - `VERIFY` - Check PIN validity
 - `START_AUCTION` - Put player up for bidding
@@ -205,24 +425,24 @@ Admin actions (requires PIN):
 - `JOKER` - Activate joker card for a team (one per team, claims at base price)
 - `RESET` - Full reset (requires confirmReset: true)
 
-### GET /api/players
+#### GET /api/players
 Returns all players with profile data (images, CricHeroes links)
 
-### POST /api/players
+#### POST /api/players
 Update player profile (requires PIN):
 - Upload image (base64 or URL, max 1MB)
 - Add CricHeroes profile URL
 
-### DELETE /api/players
+#### DELETE /api/players
 Remove player profile field (requires PIN)
 
-### POST /api/players/self-upload
+#### POST /api/players/self-upload
 Player self-upload photo (NO authentication required):
 - Upload image (base64, max 1MB)
 - Just needs playerId and image
 - Anyone can upload photos for any player
 
-### POST /api/team-profile
+#### POST /api/team-profile
 Team logo upload (NO authentication required):
 - Upload team logo (base64, max 1MB)
 - Just needs teamId and logo
@@ -231,15 +451,23 @@ Team logo upload (NO authentication required):
 ## KV Storage Keys
 
 ```typescript
+// Legacy
 const STATE_KEY = 'auction:state';      // AuctionState object
 const PROFILES_KEY = 'player:profiles'; // Record<playerId, PlayerProfile>
 const TEAM_PROFILES_KEY = 'team:profiles'; // Record<teamId, { logo?: string }>
+
+// Tournament Management
+const TOURNAMENT_CONFIG_KEY = `tournament:${tournamentId}:config`;
+const TOURNAMENT_STATE_KEY = `tournament:${tournamentId}:state`;
+const TOURNAMENT_INDEX_KEY = 'tournament:index';
+const TOURNAMENT_PLAYERS_KEY = `tournament:${tournamentId}:players`;
+const TOURNAMENT_TEAMS_KEY = `tournament:${tournamentId}:teams`;
 ```
 
 ## Environment Variables
 
 ```
-ADMIN_PIN=2237              # Admin panel access
+ADMIN_PIN=2237              # Legacy admin panel access
 KV_REST_API_URL=...         # Vercel KV (auto-set when connected)
 KV_REST_API_TOKEN=...       # Vercel KV (auto-set when connected)
 ```
@@ -261,6 +489,13 @@ git add . && git commit -m "message"
 git push             # Auto-deploys to Vercel
 ```
 
+### Testing
+```bash
+npm test             # Run all tests
+npm run test:watch   # Watch mode
+npm run test:coverage # Coverage report
+```
+
 ### Reset Auction Data
 In admin panel: Danger Zone → Reset Entire Auction (type "RESET")
 
@@ -278,7 +513,59 @@ curl -X POST https://draftcast.app/api/state \
 - Gradient text for "DraftCast" branding
 - "LIVE TODAY" pulsing badge on active events
 - Staggered fade-in animations
+- **NEW**: Fetches tournaments dynamically from API
+- **NEW**: "Browse All Tournaments" and "Create Tournament" CTAs
+- **NEW**: Shows up to 3 featured tournaments
 - Logo in `public/logo.png` used for favicon
+
+### Tournament Management UI (NEW!)
+
+#### Tournament Dashboard (`/tournaments`)
+- Responsive grid layout (1 column mobile, 2 tablet, 3 desktop)
+- Search bar with real-time filtering
+- Loading skeletons during fetch
+- Empty state with CTA
+- Floating Action Button (FAB) for "Create Tournament"
+- Pull-to-refresh support (mobile)
+
+#### Create Tournament Wizard (`/tournaments/new`)
+- **Step 1**: Basic Info
+  - Tournament name (auto-generates slug)
+  - Slug with real-time availability check
+  - Sport dropdown
+- **Step 2**: Details
+  - Start/end dates (date pickers)
+  - Location input
+  - Description textarea
+- **Step 3**: Security
+  - Admin PIN input (password field)
+  - PIN strength indicator (weak/medium/strong)
+  - Visual feedback and suggestions
+- **Step 4**: Theme
+  - Color preset selection (5 presets)
+  - Logo URL input (optional)
+- **Step 5**: Review
+  - Summary of all inputs
+  - Edit links to go back
+  - Submit button
+
+**Features**:
+- Auto-save drafts every 30 seconds
+- Draft recovery banner on return
+- Real-time validation with inline errors
+- Toast notifications for success/errors
+- Mobile-first design with safe area padding
+- Keyboard navigation support
+- Progress indicator
+
+#### Tournament View (`/tournaments/[slug]`)
+- Tournament header with logo
+- Status badge (Draft/Live/Completed)
+- Metadata (sport, location, dates)
+- Action buttons:
+  - View Auction (if published)
+  - Admin Panel
+  - Share (Web Share API + clipboard fallback)
 
 ### AuctionStatus.tsx
 Displays different states:
@@ -344,6 +631,14 @@ Team pages are **public with no authentication**:
 5. **Non-null assertions**: API route uses `state!` in callbacks where TypeScript can't infer non-null
 6. **Price Rounding**: All prices must be multiples of ₹100 (enforced in API and UI)
 7. **Idempotency**: SOLD action checks if player already in roster to prevent double-click issues
+8. **Tournament Authentication**: Uses JWT tokens (session/master) or PIN verification
+9. **Tournament Lifecycle**: Draft → Published → Active → Completed → Archived
+10. **Rate Limiting**: Tournament creation limited to 5 per hour per IP
+11. **Slug Validation**: Must be lowercase, alphanumeric + hyphens, 3-50 chars, unique
+12. **Mobile-First**: All new UI components follow mobile-first design principles
+13. **Accessibility**: ARIA labels, keyboard navigation, screen reader support
+14. **Touch Targets**: Minimum 44px height for all interactive elements
+15. **Safe Areas**: iPhone notch/home indicator padding using CSS env() variables
 
 ## Intelligence Panel
 
@@ -386,3 +681,14 @@ The intelligence panel (`/lrccsuper11/intelligence`) provides real-time bid pred
 ### Build errors
 - Run `npm run build` locally before pushing
 - Check for TypeScript errors in API routes
+
+### Tournament creation fails
+- Check slug availability (must be unique)
+- Ensure PIN meets strength requirements (4+ chars)
+- Verify all required fields are filled
+- Check rate limit (5 per hour per IP)
+
+### Tournament not found
+- Verify tournament is published (draft tournaments require auth)
+- Check tournament hasn't expired (90 days from creation)
+- Ensure correct tournament ID/slug
